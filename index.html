@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebAR-каталог мебели</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="header__inner">
+      <h1 class="header__title">Мебель в дополненной реальности</h1>
+      <p class="header__subtitle">Выберите модель и примерьте её в своей комнате с телефона</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="filters" aria-label="Фильтры каталога">
+      <div class="filters__field">
+        <label for="search">Поиск по названию</label>
+        <input id="search" type="search" placeholder="Например, Linea" autocomplete="off">
+      </div>
+
+      <fieldset class="filters__field">
+        <legend>Категория</legend>
+        <div id="categories" class="chips"></div>
+      </fieldset>
+
+      <div class="filters__field">
+        <label for="price">Цена до <output id="price-output">100 000 ₽</output></label>
+        <input id="price" type="range" min="0" max="100000" step="1000" value="100000">
+      </div>
+
+      <button id="reset" class="button button--ghost" type="button">Сбросить фильтры</button>
+    </section>
+
+    <section class="results" aria-live="polite">
+      <p id="count" class="results__count"></p>
+      <div id="grid" class="grid"></div>
+      <p id="empty" class="empty" hidden>Ничего не найдено. Измените условия поиска.</p>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal__close" type="button" data-close aria-label="Закрыть">×</button>
+
+      <div class="modal__viewer">
+        <model-viewer id="viewer"
+                      ar
+                      ar-modes="webxr scene-viewer quick-look"
+                      camera-controls
+                      auto-rotate
+                      shadow-intensity="1"
+                      ar-scale="fixed"
+                      ar-placement="floor"
+                      touch-action="pan-y"
+                      alt="3D-модель мебели">
+          <button id="ar-button" class="ar-button" type="button" slot="ar-button">
+            Поставить в комнате
+          </button>
+        </model-viewer>
+      </div>
+
+      <div class="modal__info">
+        <p class="modal__category" id="modal-category"></p>
+        <h2 class="modal__title" id="modal-title"></h2>
+        <p class="modal__price" id="modal-price"></p>
+        <p class="modal__description" id="modal-description"></p>
+
+        <div class="block">
+          <h3 class="block__title">Цвет</h3>
+          <div id="colors" class="swatches"></div>
+          <p class="swatches__hint" id="color-name"></p>
+        </div>
+
+        <div class="block">
+          <button id="dimensions-toggle" class="button button--ghost" type="button"
+                  aria-expanded="false" aria-controls="dimensions">
+            Показать габариты
+          </button>
+          <dl id="dimensions" class="dimensions" hidden>
+            <div><dt>Ширина</dt><dd id="dim-width"></dd></div>
+            <div><dt>Глубина</dt><dd id="dim-depth"></dd></div>
+            <div><dt>Высота</dt><dd id="dim-height"></dd></div>
+          </dl>
+        </div>
+
+        <div class="block">
+          <h3 class="block__title">Материалы</h3>
+          <ul id="materials" class="materials"></ul>
+        </div>
+
+        <p class="modal__note" id="ar-note"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

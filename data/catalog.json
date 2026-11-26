@@ -1,0 +1,53 @@
+{
+  "currency": "RUB",
+  "updated": "2026-11-27",
+  "products": [
+    {
+      "id": "chair-nord",
+      "name": "Стул Nord",
+      "category": "Кресла",
+      "price": 7490,
+      "dimensions": { "width": 46, "depth": 48, "height": 97 },
+      "materials": ["Стальной каркас", "Ткань букле", "Берёзовая фанера"],
+      "colors": [
+        { "id": "graphite", "name": "Графит", "hex": "#4b5563", "material": 1 },
+        { "id": "indigo", "name": "Индиго", "hex": "#2f4a7a", "material": 1 },
+        { "id": "sand", "name": "Песок", "hex": "#c8b391", "material": 1 }
+      ],
+      "model": "assets/models/chair.glb",
+      "ios_src": null,
+      "description": "Компактный стул с гнутым каркасом и мягким сиденьем для столовой зоны."
+    },
+    {
+      "id": "table-linea",
+      "name": "Стол обеденный Linea",
+      "category": "Столы",
+      "price": 32900,
+      "dimensions": { "width": 120, "depth": 70, "height": 76 },
+      "materials": ["Массив дуба", "Шпон дуба", "Металлические опоры"],
+      "colors": [
+        { "id": "oak", "name": "Натуральный дуб", "hex": "#b8875a", "material": 0 },
+        { "id": "walnut", "name": "Тёмный орех", "hex": "#6d4b32", "material": 0 },
+        { "id": "white", "name": "Белый лак", "hex": "#e8e4dd", "material": 0 }
+      ],
+      "model": "assets/models/table.glb",
+      "description": "Обеденный стол на 4–6 человек: массивная столешница на четырёх конических опорах."
+    },
+    {
+      "id": "sofa-loft",
+      "name": "Диван Loft",
+      "category": "Диваны",
+      "price": 89900,
+      "dimensions": { "width": 196, "depth": 85, "height": 88 },
+      "materials": ["Каркас из массива", "Рогожка", "Наполнитель ППУ", "Металлические ножки"],
+      "colors": [
+        { "id": "graphite", "name": "Графит", "hex": "#3b4252", "material": 1 },
+        { "id": "moss", "name": "Мох", "hex": "#5c6b4a", "material": 1 },
+        { "id": "clay", "name": "Терракота", "hex": "#a75f47", "material": 1 }
+      ],
+      "model": "assets/models/sofa.glb",
+      "ios_src": null,
+      "description": "Трёхместный диван с двумя подушками и низкими ножками под лофт-интерьер."
+    }
+  ]
+}
