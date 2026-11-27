@@ -8,7 +8,14 @@
   // Порог металличности по умолчанию: ниже него материал считается «основным»
   // и перекрашивается; так хромированные ножки остаются нетронутыми.
   const DEFAULT_METALLIC_LIMIT = 0.7;
-  const THUMBS = { "Кресла": "🪑", "Столы": "🍽️", "Диваны": "🛋️" };
+  // Минималистичная заглушка вместо постера: аккуратный «3D-куб» без эмодзи.
+  const POSTER_FALLBACK_SVG =
+    '<svg class="card__placeholder-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">' +
+    '<path d="M24 6 42 15v18L24 42 6 33V15z" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linejoin="round"/>' +
+    '<path d="M6 15l18 9 18-9M24 24v18" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linejoin="round"/>' +
+    "</svg>";
   const CART_KEY = "webar-cart-v1";
   const MAX_CART_ROWS = 50; // защита localStorage от неограниченного роста
 
@@ -39,6 +46,8 @@
     count: el("count"),
     modal: el("modal"),
     viewer: el("viewer"),
+    viewerProgress: el("viewer-progress"),
+    viewerProgressBar: el("viewer-progress").querySelector(".viewer-progress__bar"),
     arButton: el("ar-button"),
     arNote: el("ar-note"),
     colors: el("colors"),
@@ -120,6 +129,42 @@
     });
   }
 
+  /* ---------- Превью карточки: постер или SVG-заглушка ---------- */
+
+  /* Постер — реальный рендер модели. Если файла ещё нет или он не загрузился,
+     показываем минималистичную SVG-заглушку: сломанная иконка не мелькает. */
+  function buildPoster(product) {
+    const box = document.createElement("span");
+    box.className = "card__poster";
+
+    const placeholder = document.createElement("span");
+    placeholder.className = "card__placeholder";
+    placeholder.innerHTML = POSTER_FALLBACK_SVG;
+
+    if (!product.poster) {
+      box.classList.add("card__poster--empty");
+      box.append(placeholder);
+      return box;
+    }
+
+    const img = document.createElement("img");
+    img.className = "card__poster-img";
+    img.src = product.poster;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    // Битую картинку убираем совсем, чтобы браузер не рисовал свою иконку.
+    img.addEventListener("error", () => {
+      img.remove();
+      box.classList.add("card__poster--empty");
+    });
+    img.addEventListener("load", () => {
+      box.classList.add("card__poster--ready");
+    });
+    box.append(placeholder, img);
+    return box;
+  }
+
   /* ---------- Карточки ---------- */
 
   function renderGrid() {
@@ -134,8 +179,13 @@
 
       const thumb = document.createElement("div");
       thumb.className = "card__thumb";
-      thumb.textContent = THUMBS[product.category] || "🪑";
       thumb.setAttribute("aria-hidden", "true");
+      thumb.append(buildPoster(product));
+
+      const badge = document.createElement("span");
+      badge.className = "card__badge";
+      badge.textContent = "3D • AR";
+      thumb.append(badge);
 
       const body = document.createElement("div");
       body.className = "card__body";
@@ -424,6 +474,12 @@
     }
 
     viewer.setAttribute("alt", `${product.name} — 3D-модель`);
+    // Постер показывается, пока грузится .glb: без него сцена пустует.
+    if (product.poster) {
+      viewer.setAttribute("poster", product.poster);
+    } else {
+      viewer.removeAttribute("poster");
+    }
     // ios-src задаём только когда файл .usdz реально есть, иначе Quick Look
     // запрашивал бы несуществующий путь.
     if (product.ios_src) {
@@ -433,6 +489,7 @@
     }
 
     resetViewerCamera();
+    resetProgressBar();
     // Снимок материалов старой модели больше не действителен.
     state.materials = [];
     state.materialsForModel = null;
@@ -451,6 +508,31 @@
 
     viewer.setAttribute("src", product.model);
     buildSwatches(product);
+  }
+
+  /* ---------- Индикатор загрузки модели ---------- */
+
+  /* Полоса в слоте progress-bar: показывается, пока грузится .glb,
+     и плавно скрывается после загрузки. */
+  function resetProgressBar() {
+    ui.viewerProgress.hidden = false;
+    ui.viewerProgress.classList.remove("viewer-progress--done");
+    ui.viewerProgressBar.style.transform = "scaleX(0)";
+  }
+
+  function setProgress(value) {
+    const ratio = Math.max(0, Math.min(1, Number(value) || 0));
+    ui.viewerProgressBar.style.transform = `scaleX(${ratio})`;
+  }
+
+  function finishProgressBar() {
+    setProgress(1);
+    ui.viewerProgress.classList.add("viewer-progress--done");
+    window.setTimeout(() => {
+      ui.viewerProgress.hidden = true;
+      ui.viewerProgress.classList.remove("viewer-progress--done");
+      ui.viewerProgressBar.style.transform = "scaleX(0)";
+    }, 420);
   }
 
   function closeProduct(options = {}) {
@@ -992,7 +1074,12 @@
 
     // Метки габаритов зависят от реальных размеров: пересчитываем при загрузке
     // модели и при смене размеров окна (model-viewer пересчитывает камеру).
+    ui.viewer.addEventListener("progress", (event) => {
+      setProgress(event.detail?.totalProgress);
+    });
+
     ui.viewer.addEventListener("load", () => {
+      finishProgressBar();
       updateArAvailability();
       // Снимок исходных материалов: нужен для возврата к «оригиналу».
       captureMaterials();
@@ -1002,6 +1089,7 @@
     });
 
     ui.viewer.addEventListener("error", () => {
+      finishProgressBar();
       ui.arNote.textContent = "Не удалось загрузить 3D-модель. Проверьте файл модели.";
     });
 

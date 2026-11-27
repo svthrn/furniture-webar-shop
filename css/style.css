@@ -186,12 +186,73 @@ output { color: var(--text); font-weight: 600; }
 
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
 
+/* Превью карточки: мягкий студийный фон, постер по центру и бейдж «3D • AR». */
 .card__thumb {
+  position: relative;
   display: grid;
   place-items: center;
-  height: 150px;
-  background: var(--accent-soft);
-  font-size: 2.6rem;
+  height: 168px;
+  padding: 14px;
+  overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 0%, #ffffff 0%, var(--accent-soft) 58%, #e2e4ea 100%);
+}
+
+.card__poster {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.card__poster-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  opacity: 0;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+
+.card__poster--ready .card__poster-img { opacity: 1; }
+
+.card:hover .card__poster--ready .card__poster-img { transform: scale(1.06); }
+
+/* Постер не найден: та же геометрия, что у картинки, чтобы карточка не «прыгала». */
+.card__poster--empty .card__poster-img { display: none; }
+
+.card__placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: #9aa0ac;
+}
+
+.card__poster--ready .card__placeholder { display: none; }
+
+.card__placeholder-icon {
+  width: 72px;
+  height: 72px;
+}
+
+.card__badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 9px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(27, 29, 33, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .card__body { display: grid; gap: 6px; padding: 14px 16px 18px; }
@@ -275,15 +336,78 @@ output { color: var(--text); font-weight: 600; }
 .modal__viewer {
   position: relative;
   min-height: 340px;
-  background: #eceae5;
+  /* Студийный радиальный фон: свет сверху, мягкое затемнение по краям. */
+  background:
+    radial-gradient(90% 75% at 50% 8%, #ffffff 0%, #f1f0ec 42%, #dcdad3 100%);
 }
 
-model-viewer { width: 100%; height: 100%; min-height: 340px; }
+model-viewer {
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+  /* Постер — картинка модели; фон под ней берём из студийного градиента. */
+  --poster-color: transparent;
+}
+
+/* ---------- Индикатор загрузки модели ---------- */
+
+.viewer-progress {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(240px, 62%);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.3s ease;
+}
+
+.viewer-progress[hidden] { display: none; }
+
+.viewer-progress__track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  background: rgba(27, 29, 33, 0.12);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.viewer-progress__bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.2s ease;
+}
+
+/* Модель загружена: полоса доехала до конца и растворяется. */
+.viewer-progress--done { opacity: 0; }
+
+/* Компактная подсказка внизу сцены. */
+.viewer-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  z-index: 2;
+  padding: 5px 12px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
 
 .ar-button {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  /* Выше компактной подсказки внизу сцены: они не перекрываются. */
+  bottom: 40px;
   transform: translateX(-50%);
   padding: 11px 18px;
   font: inherit;
@@ -453,8 +577,8 @@ model-viewer { width: 100%; height: 100%; min-height: 340px; }
   font: inherit;
   font-size: 0.8rem;
   color: var(--accent);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 999px;
   cursor: pointer;
   backdrop-filter: blur(8px);
@@ -565,7 +689,10 @@ model-viewer { width: 100%; height: 100%; min-height: 340px; }
   .modal__close { top: 8px; right: 10px; width: 34px; height: 34px; font-size: 1.25rem; }
 
   /* AR-кнопка компактнее на телефоне. */
-  .ar-button { padding: 8px 14px; font-size: 0.85rem; bottom: 10px; }
+  .ar-button { padding: 8px 14px; font-size: 0.85rem; bottom: 36px; }
+
+  /* Подсказка внизу сцены на телефоне мельче. */
+  .viewer-hint { font-size: 0.68rem; padding: 4px 10px; }
 
   /* Метки габаритов не должны растягивать сцену. */
   .hotspot { font-size: 0.72rem; padding: 3px 8px 3px 3px; }

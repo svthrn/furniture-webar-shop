@@ -15,6 +15,7 @@
         { "id": "sand", "name": "Песок", "hex": "#c8b391", "material": 1 }
       ],
       "model": "assets/models/chair.glb",
+      "poster": "assets/posters/chair-nord.webp",
       "ios_src": null,
       "description": "Компактный стул с гнутым каркасом и мягким сиденьем для столовой зоны."
     },
@@ -32,6 +33,7 @@
         { "id": "white", "name": "Белый лак", "hex": "#e8e4dd" }
       ],
       "model": "assets/models/table.glb",
+      "poster": "assets/posters/table-linea.webp",
       "description": "Обеденный стол на 4–6 человек: массивная столешница на четырёх конических опорах."
     },
     {
@@ -47,6 +49,7 @@
         { "id": "clay", "name": "Терракота", "hex": "#a75f47" }
       ],
       "model": "assets/models/sofa.glb",
+      "poster": "assets/posters/sofa-loft.webp",
       "ios_src": null,
       "description": "Трёхместный диван с двумя подушками и низкими ножками под лофт-интерьер."
     }
