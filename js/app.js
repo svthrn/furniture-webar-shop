@@ -582,7 +582,7 @@
 
   /* Исходный ракурс: модель целиком в кадре, зум в пределах min/max из разметки.
      Значения совпадают с атрибутами <model-viewer> в index.html. */
-  const DEFAULT_ORBIT = "35deg 72deg 145%";
+  const DEFAULT_ORBIT = "35deg 72deg 210%";
 
   function resetViewerCamera() {
     const viewer = ui.viewer;
