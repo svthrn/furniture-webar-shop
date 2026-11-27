@@ -87,10 +87,12 @@
           </button>
         </model-viewer>
 
-        <button id="reset-view" class="viewer-tool" type="button"
-                title="Вернуть исходный ракурс и масштаб">Сбросить вид</button>
-        <button id="qr-open" class="viewer-tool viewer-tool--right" type="button"
-                title="Открыть этот товар на телефоне">AR на телефоне (QR)</button>
+        <div class="viewer-tools">
+          <button id="reset-view" class="viewer-tool" type="button"
+                  title="Вернуть исходный ракурс и масштаб">Сбросить вид</button>
+          <button id="qr-open" class="viewer-tool" type="button"
+                  title="Открыть этот товар на телефоне">AR на телефоне (QR)</button>
+        </div>
       </div>
 
       <div class="modal__info">
@@ -119,8 +121,19 @@
 
         <div class="block">
           <div class="modal__actions">
-            <button id="add-to-cart" class="button" type="button">В корзину</button>
-            <p id="add-to-cart-note" class="modal__note" role="status"></p>
+            <div id="cart-stepper" class="stepper-block">
+              <button id="add-to-cart" class="button button--add" type="button">В корзину</button>
+              <div id="cart-pill" class="pill" hidden>
+                <button class="pill__btn" id="pill-minus" type="button"
+                        aria-label="Уменьшить количество">−</button>
+                <span class="pill__center">
+                  <b class="pill__qty" id="pill-qty">1</b>
+                  <span class="pill__caption">В корзине</span>
+                </span>
+                <button class="pill__btn" id="pill-plus" type="button"
+                        aria-label="Увеличить количество">+</button>
+              </div>
+            </div>
           </div>
         </div>
 

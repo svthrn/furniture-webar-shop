@@ -47,6 +47,11 @@
     qrCode: el("qr-code"),
     qrItem: el("qr-item"),
     qrUrl: el("qr-url"),
+    addToCart: el("add-to-cart"),
+    cartPill: el("cart-pill"),
+    pillMinus: el("pill-minus"),
+    pillPlus: el("pill-plus"),
+    pillQty: el("pill-qty"),
     cartOpen: el("cart-open"),
     cartCount: el("cart-count"),
     cartCountText: el("cart-count-text"),
@@ -55,8 +60,6 @@
     cartEmpty: el("cart-empty"),
     cartTotal: el("cart-total"),
     cartClear: el("cart-clear"),
-    addToCart: el("add-to-cart"),
-    addToCartNote: el("add-to-cart-note"),
     checkout: el("checkout"),
     checkoutNote: el("checkout-note"),
   };
@@ -214,6 +217,29 @@
     return color ? color.name : product.colors[0].name;
   }
 
+  /* Количество выбранного варианта (товар + цвет): основа для кнопки-степпера
+     и для синхронизации с боковой панелью корзины. */
+  function selectedRowQty() {
+    const product = state.selected;
+    if (!product) return 0;
+    const row = state.cart.find(
+      (item) => item.id === product.id && item.colorId === state.selectedColorId
+    );
+    return row ? row.qty : 0;
+  }
+
+  function renderCartStepper() {
+    const qty = selectedRowQty();
+    const inCart = qty > 0;
+    ui.addToCart.hidden = inCart;
+    ui.cartPill.hidden = !inCart;
+    if (inCart) {
+      ui.pillQty.textContent = String(qty);
+      ui.pillMinus.setAttribute("aria-label", `Уменьшить количество: ${state.selected.name}`);
+      ui.pillPlus.setAttribute("aria-label", `Увеличить количество: ${state.selected.name}`);
+    }
+  }
+
   function addToCart(product, colorId) {
     const existing = state.cart.find(
       (row) => row.id === product.id && row.colorId === colorId
@@ -223,13 +249,34 @@
     } else if (state.cart.length < MAX_CART_ROWS) {
       state.cart.push({ id: product.id, colorId, qty: 1 });
     } else {
-      ui.addToCartNote.textContent = "Корзина переполнена: удалите лишние позиции.";
-      return;
+      return; // корзина переполнена
     }
     saveCart();
     renderCartCount();
-    ui.addToCartNote.textContent =
-      `Добавлено: ${product.name} — ${colorNameFor(product, colorId)}.`;
+    renderCartStepper();
+  }
+
+  /* Меняет количество выбранного варианта: 0 удаляет позицию
+     и возвращает обычную кнопку «В корзину». */
+  function stepSelected(delta) {
+    const product = state.selected;
+    if (!product) return;
+    const index = state.cart.findIndex(
+      (row) => row.id === product.id && row.colorId === state.selectedColorId
+    );
+    if (index === -1) {
+      if (delta > 0) addToCart(product, state.selectedColorId);
+      return;
+    }
+    const next = state.cart[index].qty + delta;
+    if (next < 1) {
+      state.cart.splice(index, 1);
+    } else {
+      state.cart[index].qty = Math.min(next, 99);
+    }
+    saveCart();
+    renderCartCount();
+    renderCartStepper();
   }
 
   function changeQty(index, delta) {
@@ -243,6 +290,7 @@
     }
     saveCart();
     renderCartCount();
+    renderCartStepper();
     renderCart();
   }
 
@@ -250,6 +298,7 @@
     state.cart.splice(index, 1);
     saveCart();
     renderCartCount();
+    renderCartStepper();
     renderCart();
   }
 
@@ -347,7 +396,6 @@
     }
     setDimensionsVisible(false);
 
-    ui.addToCartNote.textContent = "";
     ui.materials.replaceChildren();
     for (const item of product.materials) {
       const li = document.createElement("li");
@@ -369,6 +417,7 @@
     ui.viewer.addEventListener("load", resetViewerCamera, { once: true });
 
     buildSwatches(product);
+    renderCartStepper();
     ui.modal.hidden = false;
     document.body.style.overflow = "hidden";
 
@@ -420,6 +469,7 @@
       swatch.setAttribute("aria-pressed", String(swatch.dataset.id === colorId));
     }
     ui.colorName.textContent = color.name;
+    renderCartStepper(); // у другого цвета свой счётчик
     applyColor(color);
   }
 
@@ -557,6 +607,23 @@
 
   /* ---------- QR-код для перехода на телефон ---------- */
 
+  /* На сенсорных устройствах QR-переход не нужен: телефон уже в руках,
+     а кнопка QR занимает место над сценой. Учитываем coarse pointer,
+     мобильный User-Agent и доступность AR. */
+  function isTouchDevice() {
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const noHover = window.matchMedia?.("(hover: none)").matches ?? false;
+    const mobileUa = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(
+      navigator.userAgent || ""
+    );
+    return (coarse && noHover) || mobileUa;
+  }
+
+  function updateQrVisibility() {
+    const hide = isTouchDevice(); // кнопка AR-примерки остаётся всегда
+    ui.qrOpen.hidden = hide;
+  }
+
   function openQr() {
     const product = state.selected;
     if (!product) return;
@@ -667,6 +734,9 @@
       if (state.selected) addToCart(state.selected, state.selectedColorId);
     });
 
+    ui.pillMinus.addEventListener("click", () => stepSelected(-1));
+    ui.pillPlus.addEventListener("click", () => stepSelected(1));
+
     ui.qrOpen.addEventListener("click", openQr);
     ui.cartOpen.addEventListener("click", openCart);
 
@@ -674,6 +744,7 @@
       state.cart = [];
       saveCart();
       renderCartCount();
+      renderCartStepper();
       renderCart();
       ui.checkoutNote.textContent = "Корзина очищена.";
     });
@@ -740,6 +811,7 @@
     renderCartCount();
     renderCart();
     bindEvents();
+    updateQrVisibility();
 
     // Диплинк: страница открыта по ссылке из QR-кода.
     const requested = itemFromUrl();
