@@ -102,8 +102,7 @@ input[type="search"]:hover { border-color: #d6d3cc; }
 
 input[type="search"]:focus-visible,
 input[type="range"]:focus-visible,
-.button:focus-visible,
-.swatch:focus-visible {
+.button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -385,29 +384,54 @@ model-viewer {
 /* Модель загружена: полоса доехала до конца и растворяется. */
 .viewer-progress--done { opacity: 0; }
 
-/* Компактная подсказка внизу сцены. */
-.viewer-hint {
+/* Ракурсы камеры и автоповорот: строка внизу сцены, над ней — кнопка AR. */
+.viewer-views {
   position: absolute;
-  left: 50%;
+  left: 12px;
+  right: 12px;
   bottom: 10px;
   z-index: 2;
-  padding: 5px 12px;
-  font-size: 0.74rem;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.viewer-views::-webkit-scrollbar { display: none; }
+
+.viewer-view {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 999px;
+  cursor: pointer;
   white-space: nowrap;
-  transform: translateX(-50%);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.viewer-view:hover { background: #fff; color: var(--accent-hover); }
+
+/* Активный ракурс и включённый автоповорот. */
+.viewer-view[aria-pressed="true"],
+.viewer-view[aria-pressed="true"]:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
 }
 
 .ar-button {
   position: absolute;
   left: 50%;
-  /* Выше компактной подсказки внизу сцены: они не перекрываются. */
-  bottom: 40px;
+  /* Над строкой ракурсов внизу сцены. */
+  bottom: 52px;
   transform: translateX(-50%);
   padding: 11px 18px;
   font: inherit;
@@ -431,30 +455,6 @@ model-viewer {
 .block { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
 .block__title { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 
-.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
-
-.swatch {
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 2px solid var(--border);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.swatch:hover { border-color: var(--accent); }
-
-.swatch[aria-pressed="true"] {
-  border-color: var(--surface);
-  box-shadow: 0 0 0 2px var(--accent); /* чёткое кольцо активного цвета */
-}
-
-/* Единственный цвет: бейдж вместо кнопки, переключать нечего. */
-.swatch--static { cursor: default; border-color: var(--surface); box-shadow: 0 0 0 2px var(--border); }
-.swatch--static:hover { border-color: var(--surface); }
-.swatches__hint { font-size: 0.85rem; color: var(--muted); }
-
 .dimensions { display: grid; gap: 6px; margin: 0; }
 .dimensions > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
 .dimensions dt { color: var(--muted); }
@@ -466,6 +466,16 @@ model-viewer {
 /* ---------- Товар в корзину ---------- */
 
 .modal__actions { display: grid; gap: 8px; justify-items: start; }
+
+/* Переключатель AR-масштаба перед постановкой в комнату. */
+.ar-scale { display: grid; gap: 8px; justify-items: start; }
+.ar-scale[hidden] { display: none; }
+
+.segmented { display: inline-flex; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
+.segmented__btn { padding: 7px 12px; font: inherit; font-size: 0.85rem; color: var(--muted); background: transparent; border: 0; border-radius: 9px; cursor: pointer; }
+.segmented__btn:hover { color: var(--text); }
+.segmented__btn[aria-pressed="true"] { color: #fff; background: var(--accent); }
+.segmented__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .modal__actions .button { font-weight: 600; }
 
 .visually-hidden {
@@ -688,11 +698,10 @@ model-viewer {
   .viewer-tool { padding: 6px 10px; font-size: 0.74rem; }
   .modal__close { top: 8px; right: 10px; width: 34px; height: 34px; font-size: 1.25rem; }
 
-  /* AR-кнопка компактнее на телефоне. */
-  .ar-button { padding: 8px 14px; font-size: 0.85rem; bottom: 36px; }
-
-  /* Подсказка внизу сцены на телефоне мельче. */
-  .viewer-hint { font-size: 0.68rem; padding: 4px 10px; }
+  /* AR-кнопка компактнее на телефоне; строка ракурсов плотнее. */
+  .ar-button { padding: 8px 14px; font-size: 0.85rem; bottom: 52px; }
+  .viewer-views { left: 8px; right: 8px; bottom: 8px; gap: 5px; }
+  .viewer-view { padding: 5px 8px; font-size: 0.72rem; }
 
   /* Метки габаритов не должны растягивать сцену. */
   .hotspot { font-size: 0.72rem; padding: 3px 8px 3px 3px; }

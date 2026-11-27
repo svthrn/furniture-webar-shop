@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WebAR-каталог мебели</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect width='48' height='48' rx='12' fill='%232c3444'/><path d='M24 11l13 7.5v15L24 41l-13-7.5v-15z' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="css/style.css">
   <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4/dist/model-viewer.min.js"></script>
 </head>
@@ -13,7 +14,7 @@
       <div class="header__top">
         <div>
           <h1 class="header__title">Мебель в дополненной реальности</h1>
-          <p class="header__subtitle">Выберите модель и примерьте её в своей комнате с телефона</p>
+          <p class="header__subtitle">Выберите модель и поставьте её в своей комнате с телефона</p>
         </div>
         <button id="cart-open" class="cart-button" type="button" aria-haspopup="dialog">
           Корзина
@@ -65,7 +66,7 @@
                       auto-rotate
                       bounds="auto"
                       camera-target="auto auto auto"
-                      camera-orbit="35deg 72deg 210%"
+                      camera-orbit="35deg 72deg 145%"
                       min-camera-orbit="auto auto 65%"
                       max-camera-orbit="auto auto 350%"
                       min-field-of-view="15deg"
@@ -83,8 +84,8 @@
               <span class="viewer-progress__bar"></span>
             </span>
           </div>
-          <button id="ar-button" class="ar-button" type="button" slot="ar-button">
-            Поставить в комнате
+          <button id="ar-button" class="ar-button" type="button" slot="ar-button" hidden>
+            Поставить в комнате (AR)
           </button>
           <button id="hotspot-width" class="hotspot" type="button"
                   slot="hotspot-width" data-position="0 0 0" data-normal="0 0 1">
@@ -109,11 +110,15 @@
           <button id="dimensions-toggle" class="viewer-tool" type="button"
                   aria-pressed="false"
                   title="Показать габариты прямо на модели">Размеры</button>
-          <button id="qr-open" class="viewer-tool" type="button"
-                  title="Открыть этот товар на телефоне">AR на телефоне (QR)</button>
         </div>
 
-        <p class="viewer-hint" aria-hidden="true">Потяните для вращения · Колёсико для масштаба</p>
+        <div class="viewer-views" role="group" aria-label="Ракурсы камеры">
+          <button class="viewer-view" type="button" data-preset="34" aria-pressed="true">3/4</button>
+          <button class="viewer-view" type="button" data-preset="front" aria-pressed="false">Спереди</button>
+          <button class="viewer-view" type="button" data-preset="side" aria-pressed="false">Сбоку</button>
+          <button class="viewer-view" type="button" data-preset="top" aria-pressed="false">Сверху</button>
+          <button id="auto-rotate" class="viewer-view" type="button" aria-pressed="true">Автоповорот</button>
+        </div>
       </div>
 
       <div class="modal__info">
@@ -122,17 +127,24 @@
         <p class="modal__price" id="modal-price"></p>
         <p class="modal__description" id="modal-description"></p>
 
-        <div class="block">
-          <h3 class="block__title">Цвет</h3>
-          <div id="colors" class="swatches"></div>
-          <p class="swatches__hint" id="color-name"></p>
-        </div>
-
         <dl id="dimensions" class="dimensions block">
+          <div><dt>Цвет</dt><dd id="dim-color"></dd></div>
           <div><dt>Ширина</dt><dd id="dim-width"></dd></div>
           <div><dt>Глубина</dt><dd id="dim-depth"></dd></div>
           <div><dt>Высота</dt><dd id="dim-height"></dd></div>
         </dl>
+
+        <div class="block">
+          <h3 class="block__title">Поставить в комнате</h3>
+          <div id="ar-scale" class="ar-scale" hidden>
+            <div class="segmented" role="group" aria-label="Режим AR-масштаба">
+              <button class="segmented__btn" type="button" data-scale="fixed" aria-pressed="true">Масштаб 1:1</button>
+              <button class="segmented__btn" type="button" data-scale="auto" aria-pressed="false">Свободный</button>
+            </div>
+            <p class="modal__note" id="ar-scale-hint"></p>
+          </div>
+          <button id="qr-open" class="button" type="button">Поставить в комнате</button>
+        </div>
 
         <div class="block">
           <div class="modal__actions">
@@ -165,7 +177,7 @@
          aria-labelledby="qr-title">
       <button class="modal__close" type="button" data-close-qr aria-label="Закрыть">×</button>
       <div class="modal__info modal__info--full">
-        <h2 class="modal__title" id="qr-title">AR на телефоне</h2>
+        <h2 class="modal__title" id="qr-title">Поставить в комнате с телефона</h2>
         <p class="modal__description">
           Наведите камеру телефона на QR-код — откроется эта же карточка товара,
           и модель можно будет поставить в своей комнате.
@@ -180,10 +192,10 @@
         </div>
         <ul class="qr__hints">
           <li><b>iPhone / iPad:</b> отсканируйте код камерой, затем нажмите
-            «Поставить в комнате» — модель откроется в AR Quick Look
+            «Поставить в комнате (AR)» — модель откроется в AR Quick Look
             (для этого нужен файл <code>.usdz</code>).</li>
           <li><b>Android:</b> отсканируйте код камерой или в Google Lens, затем
-            «Поставить в комнате» — откроется Scene Viewer или WebXR.</li>
+            «Поставить в комнате (AR)» — откроется Scene Viewer или WebXR.</li>
         </ul>
         <p class="modal__note">
           QR-код формируется прямо в браузере, без внешних сервисов.

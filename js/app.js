@@ -5,9 +5,18 @@
   "use strict";
 
   const VIEWER_TIMEOUT_MS = 4000;
-  // Порог металличности по умолчанию: ниже него материал считается «основным»
-  // и перекрашивается; так хромированные ножки остаются нетронутыми.
-  const DEFAULT_METALLIC_LIMIT = 0.7;
+  // Быстрые ракурсы камеры (camera-orbit в model-viewer). «3/4» — исходный вид.
+  const CAMERA_PRESETS = {
+    "34": "35deg 72deg 145%",
+    front: "0deg 85deg 145%",
+    side: "90deg 85deg 145%",
+    top: "0deg 10deg 155%",
+  };
+  const DEFAULT_PRESET = "34";
+  const AR_SCALE_HINTS = {
+    fixed: "1:1 — реальный размер мебели",
+    auto: "Свободный — размер не привязан к 1:1",
+  };
   // Минималистичная заглушка вместо постера: аккуратный «3D-куб» без эмодзи.
   const POSTER_FALLBACK_SVG =
     '<svg class="card__placeholder-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">' +
@@ -26,11 +35,9 @@
     category: "all",
     maxPrice: Number.POSITIVE_INFINITY,
     selected: null,
-    selectedColorId: null,
     cart: [],
     hotspotSignature: null, // модель, для которой метки уже расставлены
-    materials: [], // снимок исходных параметров материалов текущей модели
-    materialsForModel: null, // src модели, для которой снят этот снимок
+    preset: null, // ключ активного ракурса камеры
   };
 
   const el = (id) => document.getElementById(id);
@@ -50,12 +57,16 @@
     viewerProgressBar: el("viewer-progress").querySelector(".viewer-progress__bar"),
     arButton: el("ar-button"),
     arNote: el("ar-note"),
-    colors: el("colors"),
-    colorName: el("color-name"),
+    dimColor: el("dim-color"),
     dimToggle: el("dimensions-toggle"),
     dimensions: el("dimensions"),
     materials: el("materials"),
     resetView: el("reset-view"),
+    presets: Array.from(document.querySelectorAll(".viewer-view[data-preset]")),
+    autoRotate: el("auto-rotate"),
+    arScale: el("ar-scale"),
+    arScaleHint: el("ar-scale-hint"),
+    arScaleButtons: Array.from(document.querySelectorAll("[data-scale]")),
     qrOpen: el("qr-open"),
     qrModal: el("qr-modal"),
     qrCode: el("qr-code"),
@@ -232,15 +243,17 @@
     try {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
-      // Отбрасываем строки, которых больше нет в каталоге или с плохими данными.
-      state.cart = parsed
-        .filter((row) => row && typeof row.id === "string" && Number.isFinite(row.qty))
-        .map((row) => ({
-          id: row.id,
-          colorId: typeof row.colorId === "string" ? row.colorId : null,
-          qty: Math.min(Math.max(1, Math.floor(row.qty)), 99),
-        }))
-        .filter((row) => state.products.some((p) => p.id === row.id))
+      // Строки с цветом из старых версий сводим к одной позиции на товар и
+      // отбрасываем те, которых нет в каталоге или с плохими данными.
+      const merged = new Map();
+      for (const row of parsed) {
+        if (!row || typeof row.id !== "string" || !Number.isFinite(row.qty)) continue;
+        if (!state.products.some((p) => p.id === row.id)) continue;
+        const qty = Math.max(1, Math.floor(row.qty));
+        merged.set(row.id, Math.min((merged.get(row.id) ?? 0) + qty, 99));
+      }
+      state.cart = [...merged]
+        .map(([id, qty]) => ({ id, qty }))
         .slice(0, MAX_CART_ROWS);
     } catch (error) {
       state.cart = [];
@@ -267,19 +280,16 @@
     }, 0);
   }
 
-  function colorNameFor(product, colorId) {
-    const color = product.colors.find((item) => item.id === colorId);
-    return color ? color.name : product.colors[0].name;
+  /* Строка «Цвет»: поле color или название первого варианта из каталога. */
+  function colorLabel(product) {
+    return product.color ?? product.colors?.[0]?.name ?? "";
   }
 
-  /* Количество выбранного варианта (товар + цвет): основа для кнопки-степпера
-     и для синхронизации с боковой панелью корзины. */
+  /* Количество выбранного товара в корзине: основа для кнопки-степпера. */
   function selectedRowQty() {
     const product = state.selected;
     if (!product) return 0;
-    const row = state.cart.find(
-      (item) => item.id === product.id && item.colorId === state.selectedColorId
-    );
+    const row = state.cart.find((item) => item.id === product.id);
     return row ? row.qty : 0;
   }
 
@@ -295,14 +305,12 @@
     }
   }
 
-  function addToCart(product, colorId) {
-    const existing = state.cart.find(
-      (row) => row.id === product.id && row.colorId === colorId
-    );
+  function addToCart(product) {
+    const existing = state.cart.find((row) => row.id === product.id);
     if (existing) {
       existing.qty = Math.min(existing.qty + 1, 99);
     } else if (state.cart.length < MAX_CART_ROWS) {
-      state.cart.push({ id: product.id, colorId, qty: 1 });
+      state.cart.push({ id: product.id, qty: 1 });
     } else {
       return; // корзина переполнена
     }
@@ -316,11 +324,9 @@
   function stepSelected(delta) {
     const product = state.selected;
     if (!product) return;
-    const index = state.cart.findIndex(
-      (row) => row.id === product.id && row.colorId === state.selectedColorId
-    );
+    const index = state.cart.findIndex((row) => row.id === product.id);
     if (index === -1) {
-      if (delta > 0) addToCart(product, state.selectedColorId);
+      if (delta > 0) addToCart(product);
       return;
     }
     const next = state.cart[index].qty + delta;
@@ -379,7 +385,7 @@
       name.textContent = product.name;
       const meta = document.createElement("p");
       meta.className = "cart__meta";
-      meta.textContent = `${colorNameFor(product, row.colorId)} · ${money.format(product.price)}`;
+      meta.textContent = `${colorLabel(product)} · ${money.format(product.price)}`;
       info.append(name, meta);
 
       const controls = document.createElement("div");
@@ -434,7 +440,6 @@
     if (!product) return false;
 
     state.selected = product;
-    state.selectedColorId = product.colors?.[0]?.id ?? null;
     state.hotspotSignature = null; // метки пересчитаем для новой модели
 
     el("modal-category").textContent = product.category;
@@ -445,6 +450,7 @@
     el("dim-width").textContent = `${product.dimensions.width} см`;
     el("dim-depth").textContent = `${product.dimensions.depth} см`;
     el("dim-height").textContent = `${product.dimensions.height} см`;
+    ui.dimColor.textContent = colorLabel(product);
     for (const key of ["width", "depth", "height"]) {
       const node = ui.viewer.querySelector(`[data-dim="${key}"]`);
       if (node) node.textContent = `${product.dimensions[key]} см`;
@@ -461,8 +467,7 @@
     return true;
   }
 
-  /* Загрузка модели: снимок материалов снимается по событию load,
-     а выбранный цвет применяется после того, как моделью можно управлять. */
+  /* Загрузка модели: .glb отдаётся model-viewer, камера возвращается в ракурс 3/4. */
   function loadModel(product) {
     const viewer = ui.viewer;
 
@@ -490,24 +495,11 @@
 
     resetViewerCamera();
     resetProgressBar();
-    // Снимок материалов старой модели больше не действителен.
-    state.materials = [];
-    state.materialsForModel = null;
 
-    viewer.addEventListener(
-      "load",
-      () => {
-        captureMaterials();
-        const color = product.colors?.[0];
-        if (color) applyColor(color);
-      },
-      { once: true }
-    );
     // Смена src сбрасывает камеру: после новой загрузки вернём исходный ракурс.
     viewer.addEventListener("load", resetViewerCamera, { once: true });
 
     viewer.setAttribute("src", product.model);
-    buildSwatches(product);
   }
 
   /* ---------- Индикатор загрузки модели ---------- */
@@ -539,265 +531,10 @@
     ui.modal.hidden = true;
     document.body.style.overflow = "";
     state.selected = null;
-    state.selectedColorId = null;
     state.hotspotSignature = null;
     if (options.updateUrl !== false) {
       setUrlItem(null);
     }
-  }
-
-  function buildSwatches(product) {
-    ui.colors.replaceChildren();
-
-    const colors = Array.isArray(product.colors) ? product.colors : [];
-    const single = colors.length < 2; // один цвет: переключать нечего
-
-    if (colors.length) {
-      const base = colors[0];
-      if (single) {
-        // Статичный бейдж вместо группы кнопок: переключение не вызывается.
-        const badge = document.createElement("span");
-        badge.className = "swatch swatch--static";
-        badge.style.background = base.hex || "transparent";
-        badge.title = base.name;
-        badge.setAttribute("role", "img");
-        badge.setAttribute("aria-label", base.name);
-        ui.colors.append(badge);
-      } else {
-        for (const color of colors) {
-          const swatch = document.createElement("button");
-          swatch.type = "button";
-          swatch.className = "swatch";
-          swatch.style.background = color.hex;
-          swatch.title = color.name;
-          swatch.setAttribute("aria-label", color.name);
-          swatch.setAttribute("aria-pressed", String(color.id === base.id));
-          swatch.dataset.id = color.id;
-          ui.colors.append(swatch);
-        }
-      }
-      ui.colors.hidden = false;
-      ui.colorName.hidden = false;
-      ui.colorName.textContent = base.name;
-      applyColor(base);
-      return;
-    }
-
-    // Цветов нет: блок выбора скрываем и модель не перекрашиваем.
-    ui.colors.hidden = true;
-    ui.colorName.hidden = true;
-    ui.colorName.textContent = "";
-  }
-
-  function selectColor(colorId) {
-    const product = state.selected;
-    if (!product || !Array.isArray(product.colors) || product.colors.length < 2) return;
-    const color = product.colors.find((item) => item.id === colorId);
-    if (!color) return;
-
-    state.selectedColorId = colorId;
-    for (const swatch of ui.colors.children) {
-      swatch.setAttribute("aria-pressed", String(swatch.dataset.id === colorId));
-    }
-    ui.colorName.textContent = color.name;
-    renderCartStepper(); // у другого цвета свой счётчик
-    applyColor(color);
-  }
-
-  /* Перекрашивает модель текущим вариантом цвета.
-
-     Порядок: если снимок материалов ещё не снят, снимаем его по событию load.
-     Для варианта с original: true возвращаем исходные цвет и текстуру, для
-     остальных — задаём цвет и (если не keep_texture) убираем baseColorTexture. */
-  function applyColor(color) {
-    const product = state.selected;
-    if (!product) return;
-
-    const repaint = () => {
-      if (!captureMaterials()) return;
-
-      const targets = resolveColorTargets(product, color);
-      // Снимок и модель одной версии: если материалов нет, красить нечего.
-      if (color.original === true) {
-        restoreOriginalMaterials();
-      } else if (!targets.length) {
-        return;
-      } else {
-        paintMaterials(targets, color);
-      }
-      // Текстуру не вернули через API: перезагружаем модель с чистого листа,
-      // чтобы не оставалось следов прошлых перекрасок.
-      if (color.original === true || targets.some((index) => state.materials[index]?.hasTexture)) {
-        restoreMaterialsByReload(color);
-      }
-    };
-
-    // Вариант без цвета и без флага original: показываем базовое состояние.
-    if (!color.hex && color.original !== true) {
-      if (state.materialsForModel === ui.viewer.getAttribute("src")) {
-        restoreOriginalMaterials();
-      }
-      return;
-    }
-
-    if (!ui.viewer.modelIsVisible) {
-      ui.viewer.addEventListener(
-        "load",
-        () => {
-          repaint();
-        },
-        { once: true }
-      );
-      return;
-    }
-    repaint();
-  }
-
-  function hexToLinear(hex) {
-    const value = hex.replace("#", "");
-    const channels = [0, 2, 4].map((offset) =>
-      parseInt(value.slice(offset, offset + 2), 16) / 255
-    );
-    return channels.map((channel) =>
-      channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
-    );
-  }
-
-  /* ---------- Материалы модели: исходные параметры и перекраска ---------- */
-
-  /* Снимок материалов нужен, чтобы «оригинальный» вариант возвращал ровно то,
-     что лежит в GLB: цвет и baseColorTexture (дерево, ткань). */
-  function captureMaterials() {
-    const viewer = ui.viewer;
-    const materials = viewer.model?.materials;
-    if (!materials?.length) {
-      state.materials = [];
-      state.materialsForModel = null;
-      return false;
-    }
-
-    state.materials = Array.from(materials, (material) => {
-      const pbr = material.pbrMetallicRoughness;
-      return {
-        name: material.name || "(без имени)",
-        metallicFactor: pbr?.metallicFactor ?? 1,
-        origBaseColorFactor: pbr?.baseColorFactor
-          ? Array.from(pbr.baseColorFactor)
-          : null,
-        origBaseColorTexture:
-          pbr?.baseColorTexture?.texture ?? null,
-        // hasTexture считаем по наличию текстуры, а не по флагу в файле.
-        hasTexture: Boolean(pbr?.baseColorTexture?.texture),
-        baseColorTexture: pbr?.baseColorTexture ?? null,
-      };
-    });
-    state.materialsForModel = viewer.getAttribute("src");
-    logMaterials(state.materials);
-    return true;
-  }
-
-  /* Компактный дамп материалов: по нему подбираются значения color_materials
-     в data/catalog.json. */
-  function logMaterials(snapshot) {
-    const rows = snapshot.map(
-      (item, index) =>
-        `${index}: ${item.name}, metallic=${item.metallicFactor}, hasTexture=${item.hasTexture}`
-    );
-    console.debug(
-      `[model-viewer] материалы ${state.materialsForModel}: ${rows.join(" | ")}`
-    );
-  }
-
-  /* Индексы материалов, которые нужно перекрашивать. Приоритет:
-     1) явное поле color_materials/target_materials у товара в catalog.json;
-     2) явный material у цветового варианта (обратная совместимость);
-     3) все материалы с metallicFactor < 0.7, иначе первый материал. */
-  function resolveColorTargets(product, color) {
-    const total = state.materials.length;
-    if (!total) return [];
-
-    const fromProduct = product.color_materials ?? product.target_materials;
-    const explicit = Array.isArray(fromProduct)
-      ? fromProduct
-      : color.material !== undefined
-        ? [color.material]
-        : null;
-
-    if (explicit) {
-      return explicit.filter(
-        (index) => Number.isInteger(index) && index >= 0 && index < total
-      );
-    }
-
-    const nonMetallic = state.materials
-      .map((item, index) => (item.metallicFactor < DEFAULT_METALLIC_LIMIT ? index : -1))
-      .filter((index) => index !== -1);
-
-    return nonMetallic.length ? nonMetallic : [0];
-  }
-
-  /* Восстанавливает исходный вид модели: цвет и baseColorTexture каждого материала. */
-  function restoreOriginalMaterials() {
-    for (const material of ui.viewer.model?.materials ?? []) {
-      const pbr = material.pbrMetallicRoughness;
-      const snapshot = state.materials
-        ? state.materials.find((item) => item.name === material.name)
-        : null;
-      if (snapshot?.origBaseColorFactor) {
-        pbr?.setBaseColorFactor(snapshot.origBaseColorFactor);
-      }
-      if (snapshot?.baseColorTexture) {
-        snapshot.baseColorTexture.setTexture(snapshot.origBaseColorTexture);
-      }
-    }
-  }
-
-  /* Красит выбранные материалы. Текстуру дерева/ткани сбрасываем: иначе цвет
-     смешивается с ней и получается грязный оттенок. Нормали и шероховатость
-     не трогаем. */
-  function paintMaterials(targets, color) {
-    const factor = [...hexToLinear(color.hex), 1];
-    const keepTexture = color.keep_texture === true;
-
-    for (const index of targets) {
-      const material = state.materials[index];
-      const pbr = ui.viewer.model?.materials?.[index]?.pbrMetallicRoughness;
-      if (!material || !pbr) continue;
-      pbr.setBaseColorFactor(factor);
-      if (material.hasTexture && !keepTexture) {
-        pbr.baseColorTexture?.setTexture(null);
-      }
-    }
-  }
-
-  /* Перезагрузка модели для чистого состояния материалов.
-     API не даёт вернуть сброшенную baseColorTexture, поэтому после перекраски
-     текстурного материала (и при возврате к оригиналу) перезагружаем src с
-     cache-busting параметром и повторяем нужный цвет на событии load. */
-  function restoreMaterialsByReload(color) {
-    const viewer = ui.viewer;
-    const src = viewer.getAttribute("src") || viewer.src;
-    if (!src) return;
-
-    const base = src.split("#")[0].split("?")[0];
-    const nonce = `?v=${Date.now()}`;
-
-    viewer.addEventListener(
-      "load",
-      () => {
-        if (!captureMaterials()) return;
-        if (color.original === true) {
-          restoreOriginalMaterials();
-        } else {
-          paintMaterials(resolveColorTargets(state.selected, color), color);
-        }
-      },
-      { once: true }
-    );
-
-    viewer.setAttribute("src", base + nonce);
-    // Смена src сбрасывает камеру и метки: вернём ракурс после загрузки.
-    viewer.addEventListener("load", resetViewerCamera, { once: true });
   }
 
   /* ---------- Габариты: текстовый список и 3D-метки ---------- */
@@ -863,19 +600,44 @@
     state.hotspotSignature = `${product?.id ?? ""}|${dx}|${dy}|${dz}`;
   }
 
-  /* Исходный ракурс: модель целиком в кадре, зум в пределах min/max из разметки.
-     Значения совпадают с атрибутами <model-viewer> в index.html. */
-  const DEFAULT_ORBIT = "35deg 72deg 210%";
+  /* Сброс вида: ракурс 3/4 с исходным масштабом, кнопка подсвечивается как активная. */
 
   function resetViewerCamera() {
     const viewer = ui.viewer;
     viewer.cameraTarget = "auto auto auto";
-    viewer.cameraOrbit = DEFAULT_ORBIT;
+    setCameraPreset(DEFAULT_PRESET);
     viewer.fieldOfView = "auto";
     if (typeof viewer.updateFraming === "function") {
       viewer.updateFraming();
     }
   }
+  /* ---------- Ракурсы камеры, автоповорот, AR-масштаб ---------- */
+
+  function setCameraPreset(key) {
+    const orbit = CAMERA_PRESETS[key];
+    if (!orbit) return;
+    ui.viewer.cameraOrbit = orbit;
+    state.preset = key;
+    for (const button of ui.presets) {
+      button.setAttribute("aria-pressed", String(button.dataset.preset === key));
+    }
+  }
+
+  function toggleAutoRotate() {
+    const on = !ui.viewer.hasAttribute("auto-rotate");
+    ui.viewer.toggleAttribute("auto-rotate", on);
+    ui.autoRotate.setAttribute("aria-pressed", String(on));
+  }
+
+  function setArScale(mode) {
+    if (!AR_SCALE_HINTS[mode]) return;
+    ui.viewer.setAttribute("ar-scale", mode);
+    ui.arScaleHint.textContent = AR_SCALE_HINTS[mode];
+    for (const button of ui.arScaleButtons) {
+      button.setAttribute("aria-pressed", String(button.dataset.scale === mode));
+    }
+  }
+
   /* ---------- Диплинк ?item= ---------- */
 
   function productUrl(id) {
@@ -902,23 +664,6 @@
   }
 
   /* ---------- QR-код для перехода на телефон ---------- */
-
-  /* На сенсорных устройствах QR-переход не нужен: телефон уже в руках,
-     а кнопка QR занимает место над сценой. Учитываем coarse pointer,
-     мобильный User-Agent и доступность AR. */
-  function isTouchDevice() {
-    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    const noHover = window.matchMedia?.("(hover: none)").matches ?? false;
-    const mobileUa = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(
-      navigator.userAgent || ""
-    );
-    return (coarse && noHover) || mobileUa;
-  }
-
-  function updateQrVisibility() {
-    const hide = isTouchDevice(); // кнопка AR-примерки остаётся всегда
-    ui.qrOpen.hidden = hide;
-  }
 
   function openQr() {
     const product = state.selected;
@@ -962,15 +707,15 @@
 
   /* ---------- AR ---------- */
 
+  /* Кнопка в слоте model-viewer только на смартфоне с AR; на ПК — QR-код. */
   function updateArAvailability() {
-    if (!ui.viewer.canActivateAR) {
-      ui.arButton.hidden = true;
-      ui.arNote.textContent =
-        "AR-режим доступен на смартфоне: Android — через Scene Viewer/WebXR, iOS — через Quick Look. Установите модель в комнате прямо из браузера. Кнопка «AR на телефоне (QR)» покажет ссылку на этот товар.";
-      return;
-    }
-    ui.arButton.hidden = false;
-    ui.arNote.textContent = "Перетащите модель по комнате и нажмите «Поставить в комнате».";
+    const canAr = ui.viewer.canActivateAR === true;
+    ui.arButton.hidden = !canAr;
+    ui.arScale.hidden = !canAr;
+    ui.qrOpen.hidden = canAr;
+    ui.arNote.textContent = canAr
+      ? "Перетащите модель по комнате и нажмите «Поставить в комнате (AR)»."
+      : "На смартфоне с поддержкой AR «Поставить в комнате» откроет модель в вашей комнате: Android — Scene Viewer или WebXR, iOS — Quick Look. Здесь кнопка покажет QR-код для телефона.";
   }
 
   /* ---------- События ---------- */
@@ -1015,10 +760,13 @@
       if (card) openProduct(card.dataset.id);
     });
 
-    ui.colors.addEventListener("click", (event) => {
-      const swatch = event.target.closest(".swatch");
-      if (swatch) selectColor(swatch.dataset.id);
-    });
+    for (const button of ui.presets) {
+      button.addEventListener("click", () => setCameraPreset(button.dataset.preset));
+    }
+    ui.autoRotate.addEventListener("click", toggleAutoRotate);
+    for (const button of ui.arScaleButtons) {
+      button.addEventListener("click", () => setArScale(button.dataset.scale));
+    }
 
     ui.dimToggle.addEventListener("click", () => {
       setDimensionsVisible(!dimensionsOn());
@@ -1027,7 +775,7 @@
     ui.resetView.addEventListener("click", resetViewerCamera);
 
     ui.addToCart.addEventListener("click", () => {
-      if (state.selected) addToCart(state.selected, state.selectedColorId);
+      if (state.selected) addToCart(state.selected);
     });
 
     ui.pillMinus.addEventListener("click", () => stepSelected(-1));
@@ -1081,8 +829,6 @@
     ui.viewer.addEventListener("load", () => {
       finishProgressBar();
       updateArAvailability();
-      // Снимок исходных материалов: нужен для возврата к «оригиналу».
-      captureMaterials();
       // Ждём, пока model-viewer отдаст размеры после отрисовки кадра.
       window.requestAnimationFrame(() => window.setTimeout(placeHotspots, 0));
       if (dimensionsOn()) setHotspotsVisible(true);
@@ -1091,6 +837,13 @@
     ui.viewer.addEventListener("error", () => {
       finishProgressBar();
       ui.arNote.textContent = "Не удалось загрузить 3D-модель. Проверьте файл модели.";
+    });
+
+    // Ручной поворот снимает подсветку ракурса: вид уже не совпадает с кнопкой.
+    ui.viewer.addEventListener("camera-change", (event) => {
+      if (event.detail?.source !== "user-interaction" || state.preset === null) return;
+      state.preset = null;
+      for (const button of ui.presets) button.setAttribute("aria-pressed", "false");
     });
 
     window.addEventListener("resize", () => {
@@ -1115,7 +868,7 @@
     renderCartCount();
     renderCart();
     bindEvents();
-    updateQrVisibility();
+    setArScale(ui.viewer.getAttribute("ar-scale") ?? "fixed");
 
     // Диплинк: страница открыта по ссылке из QR-кода.
     const requested = itemFromUrl();
