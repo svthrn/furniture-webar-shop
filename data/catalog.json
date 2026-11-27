@@ -20,15 +20,16 @@
     },
     {
       "id": "table-linea",
+      "color_materials": [0, 1],
       "name": "Стол обеденный Linea",
       "category": "Столы",
       "price": 32900,
       "dimensions": { "width": 120, "depth": 70, "height": 76 },
       "materials": ["Массив дуба", "Шпон дуба", "Металлические опоры"],
       "colors": [
-        { "id": "oak", "name": "Натуральный дуб", "hex": "#b8875a", "material": 0 },
-        { "id": "walnut", "name": "Тёмный орех", "hex": "#6d4b32", "material": 0 },
-        { "id": "white", "name": "Белый лак", "hex": "#e8e4dd", "material": 0 }
+        { "id": "oak", "name": "Натуральный дуб", "hex": "#b8875a", "original": true },
+        { "id": "walnut", "name": "Тёмный орех", "hex": "#6d4b32" },
+        { "id": "white", "name": "Белый лак", "hex": "#e8e4dd" }
       ],
       "model": "assets/models/table.glb",
       "description": "Обеденный стол на 4–6 человек: массивная столешница на четырёх конических опорах."
@@ -41,9 +42,9 @@
       "dimensions": { "width": 196, "depth": 85, "height": 88 },
       "materials": ["Каркас из массива", "Рогожка", "Наполнитель ППУ", "Металлические ножки"],
       "colors": [
-        { "id": "graphite", "name": "Графит", "hex": "#3b4252", "material": 1 },
-        { "id": "moss", "name": "Мох", "hex": "#5c6b4a", "material": 1 },
-        { "id": "clay", "name": "Терракота", "hex": "#a75f47", "material": 1 }
+        { "id": "graphite", "name": "Графит", "hex": "#3b4252", "original": true },
+        { "id": "moss", "name": "Мох", "hex": "#5c6b4a" },
+        { "id": "clay", "name": "Терракота", "hex": "#a75f47" }
       ],
       "model": "assets/models/sofa.glb",
       "ios_src": null,
