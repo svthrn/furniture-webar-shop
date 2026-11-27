@@ -226,6 +226,19 @@ output { color: var(--text); font-weight: 600; }
   .modal__dialog { grid-template-columns: 1fr; }
 }
 
+/* Десктоп: окно фиксированной высоты. Слева вьюер стоит на месте, справа
+   прокручивается только описание; крестик лежит вне прокрутки. */
+@media (min-width: 781px) {
+  .modal__dialog:not(.modal__dialog--narrow) {
+    grid-template-rows: minmax(0, 1fr);
+    height: min(88vh, 720px);
+    max-height: none;
+    overflow: hidden;
+  }
+  .modal__dialog:not(.modal__dialog--narrow) > .modal__viewer { height: 100%; min-height: 0; }
+  .modal__dialog:not(.modal__dialog--narrow) > .modal__info { height: 100%; min-height: 0; overflow-y: auto; }
+}
+
 .modal__close {
   position: absolute;
   top: 10px;
@@ -316,7 +329,7 @@ model-viewer { width: 100%; height: 100%; min-height: 340px; }
 /* ---------- Товар в корзину ---------- */
 
 .modal__actions { display: grid; gap: 8px; justify-items: start; }
-.modal__actions .button { width: 100%; max-width: 260px; padding: 12px 16px; font-weight: 600; }
+.modal__actions .button { font-weight: 600; }
 
 .visually-hidden {
   position: absolute;
@@ -437,6 +450,14 @@ model-viewer { width: 100%; height: 100%; min-height: 340px; }
 }
 
 .viewer-tool:hover { background: #fff; color: var(--accent-hover); }
+
+/* Режим «Размеры» включён: подсветка, чтобы было видно состояние. */
+.viewer-tool--active,
+.viewer-tool--active:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
 .viewer-tool[hidden] { display: none; }
 
 .hotspot {
@@ -471,50 +492,52 @@ model-viewer { width: 100%; height: 100%; min-height: 340px; }
 
 /* ---------- Кнопка-счётчик «В корзине» ---------- */
 
-.stepper-block { display: grid; width: 100%; }
+/* Обе состояния — одна коробка 260×48 с радиусом 10px (как у исходной кнопки),
+   поэтому при переключении размеры и границы не меняются. */
+.stepper-block { display: grid; width: 100%; max-width: 260px; height: 48px; }
 
-.button--add { width: 100%; padding: 12px 16px; }
+.button--add { width: 100%; height: 100%; padding: 0 16px; border-radius: 10px; }
 
 .pill {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: stretch;
+  height: 48px;
+  overflow: hidden;
   color: #fff;
   background: var(--accent);
-  border-radius: 999px;
+  border-radius: 10px;
   box-shadow: 0 6px 18px rgba(44, 52, 68, 0.22);
 }
 
 .pill[hidden] { display: none; }
 
 .pill__btn {
-  width: 38px;
-  height: 38px;
   padding: 0;
   font: inherit;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   line-height: 1;
   color: #fff;
-  background: rgba(255, 255, 255, 0.14);
+  background: transparent;
   border: 0;
-  border-radius: 50%;
   cursor: pointer;
   transition: background-color 0.16s ease;
 }
 
-.pill__btn:hover { background: rgba(255, 255, 255, 0.26); }
+.pill__btn:hover { background: rgba(255, 255, 255, 0.14); }
 
-.pill__center { display: grid; justify-items: center; line-height: 1.1; }
-
-.pill__qty { font-size: 1.15rem; font-weight: 700; }
-
-.pill__caption {
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.72);
+/* Flex, а не grid: иначе текст и <b> становятся двумя строками сетки. */
+.pill__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
+
+.pill__qty { font-weight: 700; }
 
 /* ---------- Узкие экраны (телефоны 375–430px) ---------- */
 
