@@ -5,6 +5,9 @@
   "use strict";
 
   const VIEWER_TIMEOUT_MS = 4000;
+  // Порог металличности по умолчанию: ниже него материал считается «основным»
+  // и перекрашивается; так хромированные ножки остаются нетронутыми.
+  const DEFAULT_METALLIC_LIMIT = 0.7;
   const THUMBS = { "Кресла": "🪑", "Столы": "🍽️", "Диваны": "🛋️" };
   const CART_KEY = "webar-cart-v1";
   const MAX_CART_ROWS = 50; // защита localStorage от неограниченного роста
@@ -19,6 +22,8 @@
     selectedColorId: null,
     cart: [],
     hotspotSignature: null, // модель, для которой метки уже расставлены
+    materials: [], // снимок исходных параметров материалов текущей модели
+    materialsForModel: null, // src модели, для которой снят этот снимок
   };
 
   const el = (id) => document.getElementById(id);
@@ -379,7 +384,7 @@
     if (!product) return false;
 
     state.selected = product;
-    state.selectedColorId = product.colors[0].id;
+    state.selectedColorId = product.colors?.[0]?.id ?? null;
     state.hotspotSignature = null; // метки пересчитаем для новой модели
 
     el("modal-category").textContent = product.category;
@@ -395,28 +400,7 @@
       if (node) node.textContent = `${product.dimensions[key]} см`;
     }
     setDimensionsVisible(false);
-
-    ui.materials.replaceChildren();
-    for (const item of product.materials) {
-      const li = document.createElement("li");
-      li.textContent = item;
-      ui.materials.append(li);
-    }
-
-    ui.viewer.setAttribute("alt", `${product.name} — 3D-модель`);
-    // ios-src задаём только когда файл .usdz реально есть, иначе Quick Look
-    // запрашивал бы несуществующий путь.
-    if (product.ios_src) {
-      ui.viewer.setAttribute("ios-src", product.ios_src);
-    } else {
-      ui.viewer.removeAttribute("ios-src");
-    }
-    resetViewerCamera();
-    ui.viewer.setAttribute("src", product.model);
-    // Смена src сбрасывает камеру: после новой загрузки вернём исходный ракурс.
-    ui.viewer.addEventListener("load", resetViewerCamera, { once: true });
-
-    buildSwatches(product);
+    loadModel(product);
     renderCartStepper();
     ui.modal.hidden = false;
     document.body.style.overflow = "hidden";
@@ -425,6 +409,48 @@
       setUrlItem(product.id);
     }
     return true;
+  }
+
+  /* Загрузка модели: снимок материалов снимается по событию load,
+     а выбранный цвет применяется после того, как моделью можно управлять. */
+  function loadModel(product) {
+    const viewer = ui.viewer;
+
+    ui.materials.replaceChildren();
+    for (const item of product.materials) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ui.materials.append(li);
+    }
+
+    viewer.setAttribute("alt", `${product.name} — 3D-модель`);
+    // ios-src задаём только когда файл .usdz реально есть, иначе Quick Look
+    // запрашивал бы несуществующий путь.
+    if (product.ios_src) {
+      viewer.setAttribute("ios-src", product.ios_src);
+    } else {
+      viewer.removeAttribute("ios-src");
+    }
+
+    resetViewerCamera();
+    // Снимок материалов старой модели больше не действителен.
+    state.materials = [];
+    state.materialsForModel = null;
+
+    viewer.addEventListener(
+      "load",
+      () => {
+        captureMaterials();
+        const color = product.colors?.[0];
+        if (color) applyColor(color);
+      },
+      { once: true }
+    );
+    // Смена src сбрасывает камеру: после новой загрузки вернём исходный ракурс.
+    viewer.addEventListener("load", resetViewerCamera, { once: true });
+
+    viewer.setAttribute("src", product.model);
+    buildSwatches(product);
   }
 
   function closeProduct(options = {}) {
@@ -440,27 +466,50 @@
 
   function buildSwatches(product) {
     ui.colors.replaceChildren();
-    const base = product.colors[0];
 
-    for (const color of product.colors) {
-      const swatch = document.createElement("button");
-      swatch.type = "button";
-      swatch.className = "swatch";
-      swatch.style.background = color.hex;
-      swatch.title = color.name;
-      swatch.setAttribute("aria-label", color.name);
-      swatch.setAttribute("aria-pressed", String(color.id === base.id));
-      swatch.dataset.id = color.id;
-      ui.colors.append(swatch);
+    const colors = Array.isArray(product.colors) ? product.colors : [];
+    const single = colors.length < 2; // один цвет: переключать нечего
+
+    if (colors.length) {
+      const base = colors[0];
+      if (single) {
+        // Статичный бейдж вместо группы кнопок: переключение не вызывается.
+        const badge = document.createElement("span");
+        badge.className = "swatch swatch--static";
+        badge.style.background = base.hex || "transparent";
+        badge.title = base.name;
+        badge.setAttribute("role", "img");
+        badge.setAttribute("aria-label", base.name);
+        ui.colors.append(badge);
+      } else {
+        for (const color of colors) {
+          const swatch = document.createElement("button");
+          swatch.type = "button";
+          swatch.className = "swatch";
+          swatch.style.background = color.hex;
+          swatch.title = color.name;
+          swatch.setAttribute("aria-label", color.name);
+          swatch.setAttribute("aria-pressed", String(color.id === base.id));
+          swatch.dataset.id = color.id;
+          ui.colors.append(swatch);
+        }
+      }
+      ui.colors.hidden = false;
+      ui.colorName.hidden = false;
+      ui.colorName.textContent = base.name;
+      applyColor(base);
+      return;
     }
 
-    ui.colorName.textContent = base.name;
-    applyColor(base);
+    // Цветов нет: блок выбора скрываем и модель не перекрашиваем.
+    ui.colors.hidden = true;
+    ui.colorName.hidden = true;
+    ui.colorName.textContent = "";
   }
 
   function selectColor(colorId) {
     const product = state.selected;
-    if (!product) return;
+    if (!product || !Array.isArray(product.colors) || product.colors.length < 2) return;
     const color = product.colors.find((item) => item.id === colorId);
     if (!color) return;
 
@@ -473,35 +522,50 @@
     applyColor(color);
   }
 
-  /* Перекрашивает материал модели через API <model-viewer>;
-     если у варианта нет индекса материала, подменяет модель
-     на другой файл того же товара (variant.model). */
+  /* Перекрашивает модель текущим вариантом цвета.
+
+     Порядок: если снимок материалов ещё не снят, снимаем его по событию load.
+     Для варианта с original: true возвращаем исходные цвет и текстуру, для
+     остальных — задаём цвет и (если не keep_texture) убираем baseColorTexture. */
   function applyColor(color) {
     const product = state.selected;
     if (!product) return;
 
-    const variant = color.variant;
-    if (variant && variant.material === undefined) {
-      ui.viewer.setAttribute("src", variant.model);
+    const repaint = () => {
+      if (!captureMaterials()) return;
+
+      const targets = resolveColorTargets(product, color);
+      // Снимок и модель одной версии: если материалов нет, красить нечего.
+      if (color.original === true) {
+        restoreOriginalMaterials();
+      } else if (!targets.length) {
+        return;
+      } else {
+        paintMaterials(targets, color);
+      }
+      // Текстуру не вернули через API: перезагружаем модель с чистого листа,
+      // чтобы не оставалось следов прошлых перекрасок.
+      if (color.original === true || targets.some((index) => state.materials[index]?.hasTexture)) {
+        restoreMaterialsByReload(color);
+      }
+    };
+
+    // Вариант без цвета и без флага original: показываем базовое состояние.
+    if (!color.hex && color.original !== true) {
+      if (state.materialsForModel === ui.viewer.getAttribute("src")) {
+        restoreOriginalMaterials();
+      }
       return;
     }
 
-    const viewer = ui.viewer;
-    const repaint = () => {
-      const materials = viewer.model?.materials;
-      if (!materials?.length) return;
-      const material = materials[color.material ?? 0];
-      // Цвет задаётся через pbrMetallicRoughness: setBaseColorFactor у самого
-      // материала в v4 нет.
-      material?.pbrMetallicRoughness?.setBaseColorFactor([
-        ...hexToLinear(color.hex),
-        1,
-      ]);
-    };
-
-    // Модель ещё загружается: красим сразу после события load.
-    if (!viewer.modelIsVisible) {
-      viewer.addEventListener("load", repaint, { once: true });
+    if (!ui.viewer.modelIsVisible) {
+      ui.viewer.addEventListener(
+        "load",
+        () => {
+          repaint();
+        },
+        { once: true }
+      );
       return;
     }
     repaint();
@@ -515,6 +579,143 @@
     return channels.map((channel) =>
       channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
     );
+  }
+
+  /* ---------- Материалы модели: исходные параметры и перекраска ---------- */
+
+  /* Снимок материалов нужен, чтобы «оригинальный» вариант возвращал ровно то,
+     что лежит в GLB: цвет и baseColorTexture (дерево, ткань). */
+  function captureMaterials() {
+    const viewer = ui.viewer;
+    const materials = viewer.model?.materials;
+    if (!materials?.length) {
+      state.materials = [];
+      state.materialsForModel = null;
+      return false;
+    }
+
+    state.materials = Array.from(materials, (material) => {
+      const pbr = material.pbrMetallicRoughness;
+      return {
+        name: material.name || "(без имени)",
+        metallicFactor: pbr?.metallicFactor ?? 1,
+        origBaseColorFactor: pbr?.baseColorFactor
+          ? Array.from(pbr.baseColorFactor)
+          : null,
+        origBaseColorTexture:
+          pbr?.baseColorTexture?.texture ?? null,
+        // hasTexture считаем по наличию текстуры, а не по флагу в файле.
+        hasTexture: Boolean(pbr?.baseColorTexture?.texture),
+        baseColorTexture: pbr?.baseColorTexture ?? null,
+      };
+    });
+    state.materialsForModel = viewer.getAttribute("src");
+    logMaterials(state.materials);
+    return true;
+  }
+
+  /* Компактный дамп материалов: по нему подбираются значения color_materials
+     в data/catalog.json. */
+  function logMaterials(snapshot) {
+    const rows = snapshot.map(
+      (item, index) =>
+        `${index}: ${item.name}, metallic=${item.metallicFactor}, hasTexture=${item.hasTexture}`
+    );
+    console.debug(
+      `[model-viewer] материалы ${state.materialsForModel}: ${rows.join(" | ")}`
+    );
+  }
+
+  /* Индексы материалов, которые нужно перекрашивать. Приоритет:
+     1) явное поле color_materials/target_materials у товара в catalog.json;
+     2) явный material у цветового варианта (обратная совместимость);
+     3) все материалы с metallicFactor < 0.7, иначе первый материал. */
+  function resolveColorTargets(product, color) {
+    const total = state.materials.length;
+    if (!total) return [];
+
+    const fromProduct = product.color_materials ?? product.target_materials;
+    const explicit = Array.isArray(fromProduct)
+      ? fromProduct
+      : color.material !== undefined
+        ? [color.material]
+        : null;
+
+    if (explicit) {
+      return explicit.filter(
+        (index) => Number.isInteger(index) && index >= 0 && index < total
+      );
+    }
+
+    const nonMetallic = state.materials
+      .map((item, index) => (item.metallicFactor < DEFAULT_METALLIC_LIMIT ? index : -1))
+      .filter((index) => index !== -1);
+
+    return nonMetallic.length ? nonMetallic : [0];
+  }
+
+  /* Восстанавливает исходный вид модели: цвет и baseColorTexture каждого материала. */
+  function restoreOriginalMaterials() {
+    for (const material of ui.viewer.model?.materials ?? []) {
+      const pbr = material.pbrMetallicRoughness;
+      const snapshot = state.materials
+        ? state.materials.find((item) => item.name === material.name)
+        : null;
+      if (snapshot?.origBaseColorFactor) {
+        pbr?.setBaseColorFactor(snapshot.origBaseColorFactor);
+      }
+      if (snapshot?.baseColorTexture) {
+        snapshot.baseColorTexture.setTexture(snapshot.origBaseColorTexture);
+      }
+    }
+  }
+
+  /* Красит выбранные материалы. Текстуру дерева/ткани сбрасываем: иначе цвет
+     смешивается с ней и получается грязный оттенок. Нормали и шероховатость
+     не трогаем. */
+  function paintMaterials(targets, color) {
+    const factor = [...hexToLinear(color.hex), 1];
+    const keepTexture = color.keep_texture === true;
+
+    for (const index of targets) {
+      const material = state.materials[index];
+      const pbr = ui.viewer.model?.materials?.[index]?.pbrMetallicRoughness;
+      if (!material || !pbr) continue;
+      pbr.setBaseColorFactor(factor);
+      if (material.hasTexture && !keepTexture) {
+        pbr.baseColorTexture?.setTexture(null);
+      }
+    }
+  }
+
+  /* Перезагрузка модели для чистого состояния материалов.
+     API не даёт вернуть сброшенную baseColorTexture, поэтому после перекраски
+     текстурного материала (и при возврате к оригиналу) перезагружаем src с
+     cache-busting параметром и повторяем нужный цвет на событии load. */
+  function restoreMaterialsByReload(color) {
+    const viewer = ui.viewer;
+    const src = viewer.getAttribute("src") || viewer.src;
+    if (!src) return;
+
+    const base = src.split("#")[0].split("?")[0];
+    const nonce = `?v=${Date.now()}`;
+
+    viewer.addEventListener(
+      "load",
+      () => {
+        if (!captureMaterials()) return;
+        if (color.original === true) {
+          restoreOriginalMaterials();
+        } else {
+          paintMaterials(resolveColorTargets(state.selected, color), color);
+        }
+      },
+      { once: true }
+    );
+
+    viewer.setAttribute("src", base + nonce);
+    // Смена src сбрасывает камеру и метки: вернём ракурс после загрузки.
+    viewer.addEventListener("load", resetViewerCamera, { once: true });
   }
 
   /* ---------- Габариты: текстовый список и 3D-метки ---------- */
@@ -793,6 +994,8 @@
     // модели и при смене размеров окна (model-viewer пересчитывает камеру).
     ui.viewer.addEventListener("load", () => {
       updateArAvailability();
+      // Снимок исходных материалов: нужен для возврата к «оригиналу».
+      captureMaterials();
       // Ждём, пока model-viewer отдаст размеры после отрисовки кадра.
       window.requestAnimationFrame(() => window.setTimeout(placeHotspots, 0));
       if (dimensionsOn()) setHotspotsVisible(true);
