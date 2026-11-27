@@ -62,6 +62,13 @@
                       ar-modes="webxr scene-viewer quick-look"
                       camera-controls
                       auto-rotate
+                      bounds="tight"
+                      camera-target="auto auto auto"
+                      camera-orbit="35deg 72deg 145%"
+                      min-camera-orbit="auto auto 65%"
+                      max-camera-orbit="auto auto 350%"
+                      min-field-of-view="15deg"
+                      max-field-of-view="65deg"
                       shadow-intensity="1"
                       ar-scale="fixed"
                       ar-placement="floor"
@@ -90,6 +97,9 @@
         <div class="viewer-tools">
           <button id="reset-view" class="viewer-tool" type="button"
                   title="Вернуть исходный ракурс и масштаб">Сбросить вид</button>
+          <button id="dimensions-toggle" class="viewer-tool" type="button"
+                  aria-pressed="false"
+                  title="Показать габариты прямо на модели">Размеры</button>
           <button id="qr-open" class="viewer-tool" type="button"
                   title="Открыть этот товар на телефоне">AR на телефоне (QR)</button>
         </div>
@@ -107,17 +117,11 @@
           <p class="swatches__hint" id="color-name"></p>
         </div>
 
-        <div class="block">
-          <button id="dimensions-toggle" class="button button--ghost" type="button"
-                  aria-expanded="false" aria-controls="dimensions">
-            Показать габариты
-          </button>
-          <dl id="dimensions" class="dimensions" hidden>
-            <div><dt>Ширина</dt><dd id="dim-width"></dd></div>
-            <div><dt>Глубина</dt><dd id="dim-depth"></dd></div>
-            <div><dt>Высота</dt><dd id="dim-height"></dd></div>
-          </dl>
-        </div>
+        <dl id="dimensions" class="dimensions block">
+          <div><dt>Ширина</dt><dd id="dim-width"></dd></div>
+          <div><dt>Глубина</dt><dd id="dim-depth"></dd></div>
+          <div><dt>Высота</dt><dd id="dim-height"></dd></div>
+        </dl>
 
         <div class="block">
           <div class="modal__actions">
@@ -126,10 +130,7 @@
               <div id="cart-pill" class="pill" hidden>
                 <button class="pill__btn" id="pill-minus" type="button"
                         aria-label="Уменьшить количество">−</button>
-                <span class="pill__center">
-                  <b class="pill__qty" id="pill-qty">1</b>
-                  <span class="pill__caption">В корзине</span>
-                </span>
+                <span class="pill__center">В корзине: <b class="pill__qty" id="pill-qty">1</b></span>
                 <button class="pill__btn" id="pill-plus" type="button"
                         aria-label="Увеличить количество">+</button>
               </div>

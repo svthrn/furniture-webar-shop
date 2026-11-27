@@ -519,10 +519,13 @@
 
   /* ---------- Габариты: текстовый список и 3D-метки ---------- */
 
+  function dimensionsOn() {
+    return ui.dimToggle.getAttribute("aria-pressed") === "true";
+  }
+
   function setDimensionsVisible(visible) {
-    ui.dimensions.hidden = !visible;
-    ui.dimToggle.setAttribute("aria-expanded", String(visible));
-    ui.dimToggle.textContent = visible ? "Скрыть габариты" : "Показать габариты";
+    ui.dimToggle.setAttribute("aria-pressed", String(visible));
+    ui.dimToggle.classList.toggle("viewer-tool--active", visible);
     setHotspotsVisible(visible);
   }
 
@@ -553,7 +556,10 @@
     const { x: dx, y: dy, z: dz } = dimensions;
     const gap = Math.max(dx, dy, dz) * 0.08 + 0.02; // отступ от корпуса
 
-    // Маркеры ниже корпуса: они не перекрывают сам товар.
+    // Метки лежат на гранях габаритного бокса, чтобы читалось, что размер
+    // относится к конкретной стороне: ширина — по нижнему переднему ребру,
+    // глубина — по нижнему правому ребру (вдоль Z), высота — по правому
+    // переднему вертикальному ребру.
     const baseY = cy - dy / 2;
     const frontZ = cz + dz / 2 + gap;
     const rightX = cx + dx / 2 + gap;
@@ -561,7 +567,7 @@
     const spots = [
       { name: "hotspot-width", position: `${cx} ${baseY} ${frontZ}`, normal: "0 0 1" },
       { name: "hotspot-depth", position: `${rightX} ${baseY} ${cz}`, normal: "1 0 0" },
-      { name: "hotspot-height", position: `${rightX} ${cy} ${cz}`, normal: "1 0 0" },
+      { name: "hotspot-height", position: `${rightX} ${cy} ${frontZ}`, normal: "1 0 0" },
     ];
 
     for (const spot of spots) {
@@ -574,11 +580,18 @@
     state.hotspotSignature = `${product?.id ?? ""}|${dx}|${dy}|${dz}`;
   }
 
+  /* Исходный ракурс: модель целиком в кадре, зум в пределах min/max из разметки.
+     Значения совпадают с атрибутами <model-viewer> в index.html. */
+  const DEFAULT_ORBIT = "35deg 72deg 145%";
+
   function resetViewerCamera() {
     const viewer = ui.viewer;
-    // "auto" возвращает значения из разметки, включая auto-rotate.
-    viewer.cameraOrbit = "auto auto auto";
+    viewer.cameraTarget = "auto auto auto";
+    viewer.cameraOrbit = DEFAULT_ORBIT;
     viewer.fieldOfView = "auto";
+    if (typeof viewer.updateFraming === "function") {
+      viewer.updateFraming();
+    }
   }
   /* ---------- Диплинк ?item= ---------- */
 
@@ -725,7 +738,7 @@
     });
 
     ui.dimToggle.addEventListener("click", () => {
-      setDimensionsVisible(ui.dimensions.hidden);
+      setDimensionsVisible(!dimensionsOn());
     });
 
     ui.resetView.addEventListener("click", resetViewerCamera);
@@ -782,7 +795,7 @@
       updateArAvailability();
       // Ждём, пока model-viewer отдаст размеры после отрисовки кадра.
       window.requestAnimationFrame(() => window.setTimeout(placeHotspots, 0));
-      if (!ui.dimensions.hidden) setHotspotsVisible(true);
+      if (dimensionsOn()) setHotspotsVisible(true);
     });
 
     ui.viewer.addEventListener("error", () => {
@@ -790,7 +803,7 @@
     });
 
     window.addEventListener("resize", () => {
-      if (!ui.dimensions.hidden) placeHotspots();
+      if (dimensionsOn()) placeHotspots();
     });
   }
 
