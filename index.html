@@ -10,8 +10,17 @@
 <body>
   <header class="header">
     <div class="header__inner">
-      <h1 class="header__title">Мебель в дополненной реальности</h1>
-      <p class="header__subtitle">Выберите модель и примерьте её в своей комнате с телефона</p>
+      <div class="header__top">
+        <div>
+          <h1 class="header__title">Мебель в дополненной реальности</h1>
+          <p class="header__subtitle">Выберите модель и примерьте её в своей комнате с телефона</p>
+        </div>
+        <button id="cart-open" class="cart-button" type="button" aria-haspopup="dialog">
+          Корзина
+          <span id="cart-count" class="cart-button__count" aria-hidden="true">0</span>
+          <span class="visually-hidden" id="cart-count-text">товаров: 0</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -61,7 +70,27 @@
           <button id="ar-button" class="ar-button" type="button" slot="ar-button">
             Поставить в комнате
           </button>
+          <button id="hotspot-width" class="hotspot" type="button"
+                  slot="hotspot-width" data-position="0 0 0" data-normal="0 0 1">
+            <span class="hotspot__dot" aria-hidden="true"></span>
+            <span class="hotspot__label">Ширина: <b data-dim="width"></b></span>
+          </button>
+          <button id="hotspot-depth" class="hotspot" type="button"
+                  slot="hotspot-depth" data-position="0 0 0" data-normal="0 0 1">
+            <span class="hotspot__dot" aria-hidden="true"></span>
+            <span class="hotspot__label">Глубина: <b data-dim="depth"></b></span>
+          </button>
+          <button id="hotspot-height" class="hotspot" type="button"
+                  slot="hotspot-height" data-position="0 0 0" data-normal="0 0 1">
+            <span class="hotspot__dot" aria-hidden="true"></span>
+            <span class="hotspot__label">Высота: <b data-dim="height"></b></span>
+          </button>
         </model-viewer>
+
+        <button id="reset-view" class="viewer-tool" type="button"
+                title="Вернуть исходный ракурс и масштаб">Сбросить вид</button>
+        <button id="qr-open" class="viewer-tool viewer-tool--right" type="button"
+                title="Открыть этот товар на телефоне">AR на телефоне (QR)</button>
       </div>
 
       <div class="modal__info">
@@ -89,6 +118,13 @@
         </div>
 
         <div class="block">
+          <div class="modal__actions">
+            <button id="add-to-cart" class="button" type="button">В корзину</button>
+            <p id="add-to-cart-note" class="modal__note" role="status"></p>
+          </div>
+        </div>
+
+        <div class="block">
           <h3 class="block__title">Материалы</h3>
           <ul id="materials" class="materials"></ul>
         </div>
@@ -98,6 +134,67 @@
     </div>
   </div>
 
+  <div id="qr-modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close-qr></div>
+    <div class="modal__dialog modal__dialog--narrow" role="dialog" aria-modal="true"
+         aria-labelledby="qr-title">
+      <button class="modal__close" type="button" data-close-qr aria-label="Закрыть">×</button>
+      <div class="modal__info modal__info--full">
+        <h2 class="modal__title" id="qr-title">AR на телефоне</h2>
+        <p class="modal__description">
+          Наведите камеру телефона на QR-код — откроется эта же карточка товара,
+          и модель можно будет поставить в своей комнате.
+        </p>
+        <div class="qr">
+          <div id="qr-code" class="qr__code" aria-label="QR-код ссылки на товар"></div>
+          <p class="qr__item" id="qr-item"></p>
+          <label class="qr__url">
+            Ссылка на товар
+            <input id="qr-url" type="text" readonly>
+          </label>
+        </div>
+        <ul class="qr__hints">
+          <li><b>iPhone / iPad:</b> отсканируйте код камерой, затем нажмите
+            «Поставить в комнате» — модель откроется в AR Quick Look
+            (для этого нужен файл <code>.usdz</code>).</li>
+          <li><b>Android:</b> отсканируйте код камерой или в Google Lens, затем
+            «Поставить в комнате» — откроется Scene Viewer или WebXR.</li>
+        </ul>
+        <p class="modal__note">
+          QR-код формируется прямо в браузере, без внешних сервисов.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div id="cart-modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close-cart></div>
+    <div class="modal__dialog modal__dialog--narrow" role="dialog" aria-modal="true"
+         aria-labelledby="cart-title">
+      <button class="modal__close" type="button" data-close-cart aria-label="Закрыть">×</button>
+      <div class="modal__info modal__info--full">
+        <h2 class="modal__title" id="cart-title">Корзина</h2>
+        <p id="cart-empty" class="empty" hidden>Корзина пуста. Добавьте товар из карточки.</p>
+        <ul id="cart-items" class="cart"></ul>
+        <div class="cart__total">
+          <span>Итого</span>
+          <b id="cart-total">0 ₽</b>
+        </div>
+        <div class="archive">
+          <button class="button" id="checkout" type="button">Оформить заказ</button>
+          <p id="checkout-note" class="modal__note" role="status"></p>
+          <button class="button button--ghost" id="cart-clear" type="button">Очистить корзину</button>
+        </div>
+        <p class="modal__note">
+          Демонстрационный магазин: заказ никуда не отправляется, данные хранятся
+          только в вашем браузере (<code>localStorage</code>).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/qrcode-generator.js"></script>
+  <script src="js/qrcode.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

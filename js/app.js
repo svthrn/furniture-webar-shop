@@ -1,9 +1,13 @@
-/* Каталог мебели с WebAR-просмотром: чистый Vanilla JS без сборки. */
+/* Каталог мебели с WebAR-просмотром: чистый Vanilla JS без сборки.
+   Функции: фильтры, карточка товара, 3D-метки габаритов, диплинк ?item=,
+   QR-передача на телефон и корзина на localStorage. */
 (() => {
   "use strict";
 
   const VIEWER_TIMEOUT_MS = 4000;
   const THUMBS = { "Кресла": "🪑", "Столы": "🍽️", "Диваны": "🛋️" };
+  const CART_KEY = "webar-cart-v1";
+  const MAX_CART_ROWS = 50; // защита localStorage от неограниченного роста
 
   const state = {
     products: [],
@@ -12,6 +16,9 @@
     category: "all",
     maxPrice: Number.POSITIVE_INFINITY,
     selected: null,
+    selectedColorId: null,
+    cart: [],
+    hotspotSignature: null, // модель, для которой метки уже расставлены
   };
 
   const el = (id) => document.getElementById(id);
@@ -34,6 +41,24 @@
     dimToggle: el("dimensions-toggle"),
     dimensions: el("dimensions"),
     materials: el("materials"),
+    resetView: el("reset-view"),
+    qrOpen: el("qr-open"),
+    qrModal: el("qr-modal"),
+    qrCode: el("qr-code"),
+    qrItem: el("qr-item"),
+    qrUrl: el("qr-url"),
+    cartOpen: el("cart-open"),
+    cartCount: el("cart-count"),
+    cartCountText: el("cart-count-text"),
+    cartModal: el("cart-modal"),
+    cartItems: el("cart-items"),
+    cartEmpty: el("cart-empty"),
+    cartTotal: el("cart-total"),
+    cartClear: el("cart-clear"),
+    addToCart: el("add-to-cart"),
+    addToCartNote: el("add-to-cart-note"),
+    checkout: el("checkout"),
+    checkoutNote: el("checkout-note"),
   };
 
   const money = new Intl.NumberFormat("ru-RU", {
@@ -54,7 +79,6 @@
     state.maxPrice = Math.max(...state.products.map((p) => p.price));
     state.categories = [...new Set(state.products.map((p) => p.category))];
   }
-
   /* ---------- Фильтры ---------- */
 
   function buildCategoryChips() {
@@ -134,13 +158,180 @@
     ui.empty.hidden = products.length > 0;
   }
 
+  /* ---------- Корзина: хранилище ---------- */
+
+  function loadCart() {
+    let raw = null;
+    try {
+      raw = window.localStorage.getItem(CART_KEY);
+    } catch (error) {
+      // Приватный режим или запрет хранилища: работаем без сохранения.
+      state.cart = [];
+      return;
+    }
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      // Отбрасываем строки, которых больше нет в каталоге или с плохими данными.
+      state.cart = parsed
+        .filter((row) => row && typeof row.id === "string" && Number.isFinite(row.qty))
+        .map((row) => ({
+          id: row.id,
+          colorId: typeof row.colorId === "string" ? row.colorId : null,
+          qty: Math.min(Math.max(1, Math.floor(row.qty)), 99),
+        }))
+        .filter((row) => state.products.some((p) => p.id === row.id))
+        .slice(0, MAX_CART_ROWS);
+    } catch (error) {
+      state.cart = [];
+    }
+  }
+
+  function saveCart() {
+    try {
+      window.localStorage.setItem(CART_KEY, JSON.stringify(state.cart));
+    } catch (error) {
+      ui.checkoutNote.textContent =
+        "Не удалось сохранить корзину: браузер запретил локальное хранилище.";
+    }
+  }
+
+  function cartCount() {
+    return state.cart.reduce((sum, row) => sum + row.qty, 0);
+  }
+
+  function cartTotal() {
+    return state.cart.reduce((sum, row) => {
+      const product = state.products.find((p) => p.id === row.id);
+      return product ? sum + product.price * row.qty : sum;
+    }, 0);
+  }
+
+  function colorNameFor(product, colorId) {
+    const color = product.colors.find((item) => item.id === colorId);
+    return color ? color.name : product.colors[0].name;
+  }
+
+  function addToCart(product, colorId) {
+    const existing = state.cart.find(
+      (row) => row.id === product.id && row.colorId === colorId
+    );
+    if (existing) {
+      existing.qty = Math.min(existing.qty + 1, 99);
+    } else if (state.cart.length < MAX_CART_ROWS) {
+      state.cart.push({ id: product.id, colorId, qty: 1 });
+    } else {
+      ui.addToCartNote.textContent = "Корзина переполнена: удалите лишние позиции.";
+      return;
+    }
+    saveCart();
+    renderCartCount();
+    ui.addToCartNote.textContent =
+      `Добавлено: ${product.name} — ${colorNameFor(product, colorId)}.`;
+  }
+
+  function changeQty(index, delta) {
+    const row = state.cart[index];
+    if (!row) return;
+    const next = row.qty + delta;
+    if (next < 1) {
+      state.cart.splice(index, 1);
+    } else {
+      row.qty = Math.min(next, 99);
+    }
+    saveCart();
+    renderCartCount();
+    renderCart();
+  }
+
+  function removeRow(index) {
+    state.cart.splice(index, 1);
+    saveCart();
+    renderCartCount();
+    renderCart();
+  }
+
+  function renderCartCount() {
+    const count = cartCount();
+    ui.cartCount.textContent = String(count);
+    ui.cartCountText.textContent = `товаров в корзине: ${count}`;
+  }
+
+  function renderCart() {
+    ui.cartItems.replaceChildren();
+
+    state.cart.forEach((row, index) => {
+      const product = state.products.find((p) => p.id === row.id);
+      if (!product) return;
+
+      const item = document.createElement("li");
+      item.className = "cart__row";
+
+      const info = document.createElement("div");
+      const name = document.createElement("p");
+      name.className = "cart__name";
+      name.textContent = product.name;
+      const meta = document.createElement("p");
+      meta.className = "cart__meta";
+      meta.textContent = `${colorNameFor(product, row.colorId)} · ${money.format(product.price)}`;
+      info.append(name, meta);
+
+      const controls = document.createElement("div");
+      controls.className = "cart__controls";
+
+      const minus = document.createElement("button");
+      minus.type = "button";
+      minus.className = "step";
+      minus.textContent = "−";
+      minus.setAttribute("aria-label", `Уменьшить количество: ${product.name}`);
+      minus.addEventListener("click", () => changeQty(index, -1));
+
+      const count = document.createElement("span");
+      count.className = "cart__count";
+      count.textContent = String(row.qty);
+
+      const plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "step";
+      plus.textContent = "+";
+      plus.setAttribute("aria-label", `Увеличить количество: ${product.name}`);
+      plus.addEventListener("click", () => changeQty(index, 1));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "step step--remove";
+      remove.textContent = "×";
+      remove.title = "Удалить позицию";
+      remove.setAttribute("aria-label", `Удалить из корзины: ${product.name}`);
+      remove.addEventListener("click", () => removeRow(index));
+
+      controls.append(minus, count, plus, remove);
+
+      const price = document.createElement("p");
+      price.className = "cart__price";
+      price.textContent = money.format(product.price * row.qty);
+
+      item.append(info, controls, price);
+      ui.cartItems.append(item);
+    });
+
+    const empty = state.cart.length === 0;
+    ui.cartEmpty.hidden = !empty;
+    ui.cartTotal.textContent = money.format(cartTotal());
+    ui.checkout.disabled = empty;
+    ui.cartClear.disabled = empty;
+  }
   /* ---------- Карточка товара ---------- */
 
-  function openProduct(id) {
+  function openProduct(id, options = {}) {
     const product = state.products.find((item) => item.id === id);
-    if (!product) return;
+    if (!product) return false;
 
     state.selected = product;
+    state.selectedColorId = product.colors[0].id;
+    state.hotspotSignature = null; // метки пересчитаем для новой модели
 
     el("modal-category").textContent = product.category;
     el("modal-title").textContent = product.name;
@@ -150,8 +341,13 @@
     el("dim-width").textContent = `${product.dimensions.width} см`;
     el("dim-depth").textContent = `${product.dimensions.depth} см`;
     el("dim-height").textContent = `${product.dimensions.height} см`;
+    for (const key of ["width", "depth", "height"]) {
+      const node = ui.viewer.querySelector(`[data-dim="${key}"]`);
+      if (node) node.textContent = `${product.dimensions[key]} см`;
+    }
     setDimensionsVisible(false);
 
+    ui.addToCartNote.textContent = "";
     ui.materials.replaceChildren();
     for (const item of product.materials) {
       const li = document.createElement("li");
@@ -167,17 +363,30 @@
     } else {
       ui.viewer.removeAttribute("ios-src");
     }
+    resetViewerCamera();
     ui.viewer.setAttribute("src", product.model);
+    // Смена src сбрасывает камеру: после новой загрузки вернём исходный ракурс.
+    ui.viewer.addEventListener("load", resetViewerCamera, { once: true });
 
     buildSwatches(product);
     ui.modal.hidden = false;
     document.body.style.overflow = "hidden";
+
+    if (options.updateUrl !== false) {
+      setUrlItem(product.id);
+    }
+    return true;
   }
 
-  function closeProduct() {
+  function closeProduct(options = {}) {
     ui.modal.hidden = true;
     document.body.style.overflow = "";
     state.selected = null;
+    state.selectedColorId = null;
+    state.hotspotSignature = null;
+    if (options.updateUrl !== false) {
+      setUrlItem(null);
+    }
   }
 
   function buildSwatches(product) {
@@ -206,6 +415,7 @@
     const color = product.colors.find((item) => item.id === colorId);
     if (!color) return;
 
+    state.selectedColorId = colorId;
     for (const swatch of ui.colors.children) {
       swatch.setAttribute("aria-pressed", String(swatch.dataset.id === colorId));
     }
@@ -257,12 +467,134 @@
     );
   }
 
-  /* ---------- Габариты ---------- */
+  /* ---------- Габариты: текстовый список и 3D-метки ---------- */
 
   function setDimensionsVisible(visible) {
     ui.dimensions.hidden = !visible;
     ui.dimToggle.setAttribute("aria-expanded", String(visible));
     ui.dimToggle.textContent = visible ? "Скрыть габариты" : "Показать габариты";
+    setHotspotsVisible(visible);
+  }
+
+  function setHotspotsVisible(visible) {
+    for (const hotspot of ui.viewer.querySelectorAll(".hotspot")) {
+      hotspot.hidden = !visible;
+    }
+  }
+
+  /* Расставляет 3D-метки по реальным границам модели: работает для любой .glb,
+     а не только для текущих файлов каталога. */
+  function placeHotspots() {
+    const viewer = ui.viewer;
+    const product = state.selected;
+    if (!viewer.getDimensions || !viewer.getBoundingBoxCenter) return;
+
+    let dimensions = null;
+    let center = null;
+    try {
+      dimensions = viewer.getDimensions();
+      center = viewer.getBoundingBoxCenter();
+    } catch (error) {
+      return; // модель ещё не готова
+    }
+    if (!dimensions || !center || !Number.isFinite(center.x)) return;
+
+    const { x: cx, y: cy, z: cz } = center;
+    const { x: dx, y: dy, z: dz } = dimensions;
+    const gap = Math.max(dx, dy, dz) * 0.08 + 0.02; // отступ от корпуса
+
+    // Маркеры ниже корпуса: они не перекрывают сам товар.
+    const baseY = cy - dy / 2;
+    const frontZ = cz + dz / 2 + gap;
+    const rightX = cx + dx / 2 + gap;
+
+    const spots = [
+      { name: "hotspot-width", position: `${cx} ${baseY} ${frontZ}`, normal: "0 0 1" },
+      { name: "hotspot-depth", position: `${rightX} ${baseY} ${cz}`, normal: "1 0 0" },
+      { name: "hotspot-height", position: `${rightX} ${cy} ${cz}`, normal: "1 0 0" },
+    ];
+
+    for (const spot of spots) {
+      viewer.updateHotspot({
+        name: spot.name,
+        position: spot.position,
+        normal: spot.normal,
+      });
+    }
+    state.hotspotSignature = `${product?.id ?? ""}|${dx}|${dy}|${dz}`;
+  }
+
+  function resetViewerCamera() {
+    const viewer = ui.viewer;
+    // "auto" возвращает значения из разметки, включая auto-rotate.
+    viewer.cameraOrbit = "auto auto auto";
+    viewer.fieldOfView = "auto";
+  }
+  /* ---------- Диплинк ?item= ---------- */
+
+  function productUrl(id) {
+    const url = new URL(window.location.href);
+    if (id) {
+      url.searchParams.set("item", id);
+    } else {
+      url.searchParams.delete("item");
+    }
+    url.hash = "";
+    return url.toString();
+  }
+
+  function setUrlItem(id) {
+    if (!window.history?.replaceState) return;
+    const url = productUrl(id);
+    const current = new URL(window.location.href);
+    if (current.toString() === url) return;
+    window.history.replaceState({ item: id }, "", url);
+  }
+
+  function itemFromUrl() {
+    return new URL(window.location.href).searchParams.get("item");
+  }
+
+  /* ---------- QR-код для перехода на телефон ---------- */
+
+  function openQr() {
+    const product = state.selected;
+    if (!product) return;
+
+    const url = productUrl(product.id);
+    ui.qrItem.textContent = product.name;
+    ui.qrUrl.value = url;
+
+    if (!window.QRCode) {
+      ui.qrCode.replaceChildren();
+      ui.qrCode.textContent = "Генератор QR-кода не загрузился.";
+      ui.qrModal.hidden = false;
+      return;
+    }
+
+    const svg = window.QRCode.render(ui.qrCode, url);
+    if (!svg) {
+      ui.qrCode.textContent = "Ссылка слишком длинная для QR-кода.";
+    }
+    ui.qrModal.hidden = false;
+  }
+
+  function closeQr() {
+    ui.qrModal.hidden = true;
+    ui.qrCode.replaceChildren();
+  }
+
+  /* ---------- Панель корзины ---------- */
+
+  function openCart() {
+    renderCart();
+    ui.checkoutNote.textContent = "";
+    ui.cartModal.hidden = false;
+  }
+
+  function closeCart() {
+    ui.cartModal.hidden = true;
+    ui.checkoutNote.textContent = "";
   }
 
   /* ---------- AR ---------- */
@@ -271,7 +603,7 @@
     if (!ui.viewer.canActivateAR) {
       ui.arButton.hidden = true;
       ui.arNote.textContent =
-        "AR-режим доступен на смартфоне: Android — через Scene Viewer/WebXR, iOS — через Quick Look. Установите модель в комнате прямо из браузера.";
+        "AR-режим доступен на смартфоне: Android — через Scene Viewer/WebXR, iOS — через Quick Look. Установите модель в комнате прямо из браузера. Кнопка «AR на телефоне (QR)» покажет ссылку на этот товар.";
       return;
     }
     ui.arButton.hidden = false;
@@ -329,17 +661,65 @@
       setDimensionsVisible(ui.dimensions.hidden);
     });
 
+    ui.resetView.addEventListener("click", resetViewerCamera);
+
+    ui.addToCart.addEventListener("click", () => {
+      if (state.selected) addToCart(state.selected, state.selectedColorId);
+    });
+
+    ui.qrOpen.addEventListener("click", openQr);
+    ui.cartOpen.addEventListener("click", openCart);
+
+    ui.cartClear.addEventListener("click", () => {
+      state.cart = [];
+      saveCart();
+      renderCartCount();
+      renderCart();
+      ui.checkoutNote.textContent = "Корзина очищена.";
+    });
+
+    ui.checkout.addEventListener("click", () => {
+      const count = cartCount();
+      if (!count) return;
+      ui.checkoutNote.textContent =
+        `Заказ на ${money.format(cartTotal())} (${count} шт.) принят. ` +
+        "Это демонстрация: данные никуда не отправляются.";
+    });
+
     ui.modal.addEventListener("click", (event) => {
       if (event.target.closest("[data-close]")) closeProduct();
     });
 
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !ui.modal.hidden) closeProduct();
+    ui.qrModal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-close-qr]")) closeQr();
     });
 
-    ui.viewer.addEventListener("load", updateArAvailability);
+    ui.cartModal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-close-cart]")) closeCart();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!ui.cartModal.hidden) closeCart();
+      else if (!ui.qrModal.hidden) closeQr();
+      else if (!ui.modal.hidden) closeProduct();
+    });
+
+    // Метки габаритов зависят от реальных размеров: пересчитываем при загрузке
+    // модели и при смене размеров окна (model-viewer пересчитывает камеру).
+    ui.viewer.addEventListener("load", () => {
+      updateArAvailability();
+      // Ждём, пока model-viewer отдаст размеры после отрисовки кадра.
+      window.requestAnimationFrame(() => window.setTimeout(placeHotspots, 0));
+      if (!ui.dimensions.hidden) setHotspotsVisible(true);
+    });
+
     ui.viewer.addEventListener("error", () => {
       ui.arNote.textContent = "Не удалось загрузить 3D-модель. Проверьте файл модели.";
+    });
+
+    window.addEventListener("resize", () => {
+      if (!ui.dimensions.hidden) placeHotspots();
     });
   }
 
@@ -354,9 +734,18 @@
       return;
     }
 
+    loadCart();
     buildCategoryChips();
     renderGrid();
+    renderCartCount();
+    renderCart();
     bindEvents();
+
+    // Диплинк: страница открыта по ссылке из QR-кода.
+    const requested = itemFromUrl();
+    if (requested && !openProduct(requested, { updateUrl: false })) {
+      ui.count.textContent += " · Товар из ссылки не найден.";
+    }
 
     if (typeof customElements.get("model-viewer") === "undefined") {
       window.setTimeout(() => {
